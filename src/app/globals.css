@@ -1,26 +1,225 @@
 @import "tailwindcss";
 
+/*
+ * Dark-mode variant of @twelvelabs/strand tokens.
+ * Brand green (#00DC82) as primary accent on warm charcoal backgrounds.
+ */
+
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* ── Backgrounds (warm charcoal, strand-derived) ─── */
+  --bg-primary: #0c0b0a;
+  --bg-surface: #141312;
+  --bg-card: #1c1b19;
+  --bg-elevated: #242320;
+  --bg-hover: #2c2b28;
+
+  /* ── Brand Accent (TwelveLabs green) ─── */
+  --accent: #00DC82;
+  --accent-hover: #00B86E;
+  --accent-muted: rgba(0, 220, 130, 0.12);
+  --highlight: #60E21B;
+
+  /* ── Text (strand brand white + gray ramp) ─── */
+  --text-primary: #F4F3F3;
+  --text-secondary: #8F8984;
+  --text-tertiary: #6B6966;
+  --text-inverse: #1D1C1B;
+
+  /* ── Borders ─── */
+  --border-default: #2c2b28;
+  --border-light: #1e1d1b;
+  --border-accent: rgba(0, 220, 130, 0.3);
+
+  /* ── Semantic ─── */
+  --subscription-color: #6CD5FD;
+  --discovery-color: #FABA17;
+  --error: #DC2626;
+  --warning: #F59E0B;
+
+  /* ── Radius (strand) ─── */
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+
+  /* ── Shadows ─── */
+  --shadow-card: 0 2px 8px rgba(0, 0, 0, 0.4);
+  --shadow-elevated: 0 8px 24px rgba(0, 0, 0, 0.5);
+  --shadow-glow: 0 0 20px rgba(0, 220, 130, 0.15);
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
+  --color-background: var(--bg-primary);
+  --color-foreground: var(--text-primary);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+/* ── Base ─── */
+
+html {
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+/* ── Scrollbar ─── */
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border-default);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-tertiary);
+}
+
+/* ── Horizontal scroll rows (hide scrollbar, snap) ─── */
+
+.scroll-row {
+  display: flex;
+  gap: 16px;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  scroll-padding-left: 32px;
+  padding-left: 32px;
+  padding-right: 32px;
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.scroll-row::-webkit-scrollbar {
+  display: none;
+}
+.scroll-row > * {
+  scroll-snap-align: start;
+  flex-shrink: 0;
+}
+
+/* ── Video card hover ─── */
+
+.video-card {
+  transition: transform 0.3s cubic-bezier(0.2, 0, 0, 1), box-shadow 0.3s ease;
+}
+.video-card:hover {
+  transform: scale(1.05);
+  box-shadow: var(--shadow-elevated);
+  z-index: 10;
+}
+
+/* ── Thumbnail overlay ─── */
+
+.thumb-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.4);
+  opacity: 0;
+  transition: opacity 0.25s ease;
+}
+.video-card:hover .thumb-overlay {
+  opacity: 1;
+}
+
+/* ── Page fade in ─── */
+
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.animate-fade-up {
+  animation: fadeUp 0.5s cubic-bezier(0.2, 0, 0, 1) both;
+}
+
+/* ── Stagger children ─── */
+
+.stagger > *:nth-child(1) { animation-delay: 0ms; }
+.stagger > *:nth-child(2) { animation-delay: 60ms; }
+.stagger > *:nth-child(3) { animation-delay: 120ms; }
+.stagger > *:nth-child(4) { animation-delay: 180ms; }
+.stagger > *:nth-child(5) { animation-delay: 240ms; }
+.stagger > *:nth-child(6) { animation-delay: 300ms; }
+.stagger > *:nth-child(7) { animation-delay: 360ms; }
+.stagger > *:nth-child(8) { animation-delay: 420ms; }
+
+/* ── Badge styles ─── */
+
+.badge-subscription {
+  background: rgba(108, 213, 253, 0.15);
+  color: var(--subscription-color);
+  border: 1px solid rgba(108, 213, 253, 0.25);
+}
+.badge-discovery {
+  background: rgba(250, 186, 23, 0.15);
+  color: var(--discovery-color);
+  border: 1px solid rgba(250, 186, 23, 0.25);
+}
+
+/* ── Category pills ─── */
+
+.pill-interview { background: rgba(139, 58, 26, 0.3); color: #d4845a; }
+.pill-commentary { background: rgba(26, 74, 122, 0.3); color: #5a9ad4; }
+.pill-creative { background: rgba(106, 42, 122, 0.3); color: #c47ad4; }
+.pill-educational { background: rgba(0, 90, 58, 0.3); color: #4ad4a8; }
+
+/* ── Noise texture overlay ─── */
+
+.noise::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 9999;
+  opacity: 0.025;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+/* ── Hero gradient overlay ─── */
+
+.hero-gradient {
+  background: linear-gradient(
+    to top,
+    var(--bg-primary) 0%,
+    rgba(12, 11, 10, 0.85) 30%,
+    rgba(12, 11, 10, 0.4) 60%,
+    rgba(12, 11, 10, 0.2) 100%
+  );
+}
+
+/* ── Subscribe button ─── */
+
+.btn-subscribe {
+  background: var(--accent);
+  color: var(--text-inverse);
+  font-weight: 600;
+  padding: 8px 20px;
+  border-radius: var(--radius-md);
+  transition: background 0.2s, transform 0.15s;
+}
+.btn-subscribe:hover {
+  background: var(--accent-hover);
+  transform: translateY(-1px);
+}
+.btn-subscribe.subscribed {
+  background: var(--bg-elevated);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-default);
+}
+.btn-subscribe.subscribed:hover {
+  border-color: var(--error);
+  color: var(--error);
+  transform: translateY(-1px);
 }
