@@ -1,18 +1,47 @@
 "use client";
 
 import { useSearchParams } from "next/navigation";
-import { Suspense } from "react";
-import { searchVideos, videos } from "@/lib/mock-data";
+import { Suspense, useEffect, useState } from "react";
+import { getVideos } from "@/lib/api";
 import { SearchInput } from "@/components/search-input";
 import { VideoCard } from "@/components/video-card";
+import type { Video } from "@/lib/types";
 
 function SearchResults() {
   const searchParams = useSearchParams();
   const query = searchParams.get("q") || "";
-  const results = query ? searchVideos(query) : [];
+  const [videos, setVideos] = useState<Video[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  // Suggested topics for empty state
-  const topics = ["AI", "music", "interview", "geopolitics", "mathematics", "creator economy"];
+  useEffect(() => {
+    getVideos().then((v) => {
+      setVideos(v);
+      setLoading(false);
+    });
+  }, []);
+
+  // Client-side search (will be replaced by semantic search via PixelTable)
+  const results = query
+    ? videos.filter(
+        (v) =>
+          v.title.toLowerCase().includes(query.toLowerCase()) ||
+          v.creator.name.toLowerCase().includes(query.toLowerCase()) ||
+          v.category.toLowerCase().includes(query.toLowerCase()) ||
+          (v.attributes?.topic.some((t) =>
+            t.toLowerCase().includes(query.toLowerCase()),
+          ) ?? false),
+      )
+    : [];
+
+  const topics = ["AI", "music", "interview", "branding", "mathematics", "creator economy"];
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-[60vh]">
+        <div className="w-6 h-6 border-2 border-[var(--accent)] border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
 
   return (
     <div className="pb-16 animate-fade-up">

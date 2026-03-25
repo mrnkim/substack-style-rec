@@ -14,7 +14,11 @@ interface UserStateContextValue extends UserState {
 const STORAGE_KEY = "substack-rec-user-state";
 
 const defaultState: UserState = {
-  subscriptions: ["lex", "colin-samir", "vox-earworm"],
+  subscriptions: [
+    "UCPD_bxCRGpmmeQcbe2kpPaA", // First We Feast
+    "UCamLstJyCa-t5gfZegxsFMw", // Colin and Samir
+    "UCLXo7UDZvByw2ixzpQCufnA", // Vox
+  ],
   watchHistory: [],
 };
 

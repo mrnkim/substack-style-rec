@@ -28,10 +28,13 @@ export function VideoCard({
   return (
     <Link href={`/watch/${video.id}`} className={`video-card block ${sizeStyles[size]} group`}>
       {/* Thumbnail */}
-      <div
-        className="relative aspect-video rounded-lg overflow-hidden"
-        style={{ background: video.thumbnailGradient }}
-      >
+      <div className="relative aspect-video rounded-lg overflow-hidden bg-[var(--bg-elevated)]">
+        <img
+          src={video.thumbnailUrl}
+          alt={video.title}
+          className="absolute inset-0 w-full h-full object-cover"
+          loading="lazy"
+        />
         {/* Duration badge */}
         <span className="absolute bottom-2 right-2 px-1.5 py-0.5 text-[10px] font-mono font-medium bg-black/70 text-[var(--text-primary)] rounded">
           {formatDuration(video.duration)}

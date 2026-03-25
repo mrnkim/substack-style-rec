@@ -36,9 +36,10 @@ export interface Video {
   creator: Creator;
   category: "interview" | "commentary" | "creative" | "educational";
   duration: number;
-  thumbnailGradient: string;
+  thumbnailUrl: string;
+  hlsUrl?: string;
   uploadDate: string;
-  attributes: VideoAttributes;
+  attributes?: VideoAttributes;
 }
 
 export interface Recommendation {

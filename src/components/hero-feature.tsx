@@ -11,14 +11,11 @@ interface HeroFeatureProps {
 export function HeroFeature({ video }: HeroFeatureProps) {
   return (
     <div className="relative w-full h-[65vh] min-h-[400px] max-h-[600px] overflow-hidden animate-fade-up">
-      {/* Background gradient (thumbnail placeholder) */}
-      <div
-        className="absolute inset-0"
-        style={{
-          background: video.thumbnailGradient,
-          transform: "scale(1.1)",
-          filter: "blur(2px)",
-        }}
+      {/* Background thumbnail */}
+      <img
+        src={video.thumbnailUrl}
+        alt=""
+        className="absolute inset-0 w-full h-full object-cover scale-110 blur-sm"
       />
 
       {/* Gradient overlays */}
@@ -58,16 +55,18 @@ export function HeroFeature({ video }: HeroFeatureProps) {
         </div>
 
         {/* Topics */}
-        <div className="flex flex-wrap gap-2 mb-6">
-          {video.attributes.topic.map((t) => (
-            <span
-              key={t}
-              className="px-2 py-0.5 text-[11px] text-[var(--text-tertiary)] bg-[var(--bg-card)] rounded-full border border-[var(--border-default)]"
-            >
-              {t}
-            </span>
-          ))}
-        </div>
+        {video.attributes && video.attributes.topic.length > 0 && (
+          <div className="flex flex-wrap gap-2 mb-6">
+            {video.attributes.topic.map((t) => (
+              <span
+                key={t}
+                className="px-2 py-0.5 text-[11px] text-[var(--text-tertiary)] bg-[var(--bg-card)] rounded-full border border-[var(--border-default)]"
+              >
+                {t}
+              </span>
+            ))}
+          </div>
+        )}
 
         {/* Actions */}
         <div className="flex items-center gap-3">

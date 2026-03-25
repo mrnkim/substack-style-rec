@@ -1,16 +1,34 @@
 "use client";
 
-import { creators, videos } from "@/lib/mock-data";
+import { useEffect, useState } from "react";
+import { getVideos, getCreators } from "@/lib/api";
 import { useUserState } from "@/lib/user-state";
 import { CreatorCard } from "@/components/creator-card";
-import { VideoCard } from "@/components/video-card";
 import { VideoRow } from "@/components/video-row";
-import type { Recommendation } from "@/lib/types";
+import type { Video, Creator, Recommendation } from "@/lib/types";
 
 export default function ExplorePage() {
   const { subscriptions } = useUserState();
+  const [videos, setVideos] = useState<Video[]>([]);
+  const [creators, setCreators] = useState<Creator[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  // Creators user is NOT subscribed to
+  useEffect(() => {
+    Promise.all([getVideos(), getCreators()]).then(([v, c]) => {
+      setVideos(v);
+      setCreators(c);
+      setLoading(false);
+    });
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-[60vh]">
+        <div className="w-6 h-6 border-2 border-[var(--accent)] border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
+
   const unsubscribedCreators = creators.filter((c) => !subscriptions.includes(c.id));
   const subscribedCreators = creators.filter((c) => subscriptions.includes(c.id));
 
@@ -21,11 +39,10 @@ export default function ExplorePage() {
       video,
       score: 0.85,
       reason: `Discover ${video.creator.name}`,
-      matchedAttributes: video.attributes.topic.slice(0, 2),
+      matchedAttributes: video.attributes?.topic.slice(0, 2) ?? [],
       source: "discovery" as const,
     }));
 
-  // By category
   const categories = ["interview", "commentary", "creative", "educational"] as const;
 
   return (
@@ -79,7 +96,9 @@ export default function ExplorePage() {
               score: 0.8,
               reason: "",
               matchedAttributes: [],
-              source: subscriptions.includes(video.creator.id) ? ("subscription" as const) : ("discovery" as const),
+              source: subscriptions.includes(video.creator.id)
+                ? ("subscription" as const)
+                : ("discovery" as const),
             }));
 
           if (catVideos.length === 0) return null;

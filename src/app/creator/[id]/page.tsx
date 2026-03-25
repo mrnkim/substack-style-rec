@@ -1,16 +1,35 @@
 "use client";
 
-import { use } from "react";
-import Link from "next/link";
-import { getCreatorById, getVideosByCreator } from "@/lib/mock-data";
+import { use, useEffect, useState } from "react";
+import { getCreator } from "@/lib/api";
 import { SubscribeButton } from "@/components/subscribe-button";
 import { VideoCard } from "@/components/video-card";
 import { categoryLabel } from "@/lib/utils";
+import type { Creator, Video } from "@/lib/types";
 
 export default function CreatorPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
-  const creator = getCreatorById(id);
-  const creatorVideos = getVideosByCreator(id);
+  const [creator, setCreator] = useState<Creator | null>(null);
+  const [creatorVideos, setCreatorVideos] = useState<Video[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    getCreator(id).then((data) => {
+      if (data) {
+        setCreator(data.creator);
+        setCreatorVideos(data.videos);
+      }
+      setLoading(false);
+    });
+  }, [id]);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-[60vh]">
+        <div className="w-6 h-6 border-2 border-[var(--accent)] border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
 
   if (!creator) {
     return (

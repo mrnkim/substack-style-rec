@@ -90,8 +90,8 @@ def main():
 
     for i, row in enumerate(rows, 1):
         video_id = row["video_id"]
-        category = row.get("category", "").strip()
-        notes = row.get("notes", "").strip()
+        category = (row.get("category") or "").strip()
+        notes = (row.get("notes") or "").strip()
 
         print(f"[{i}/{len(rows)}] {video_id}")
 

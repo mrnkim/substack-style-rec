@@ -1,22 +1,64 @@
 "use client";
 
-import { use, useEffect } from "react";
+import { use, useEffect, useState } from "react";
 import Link from "next/link";
-import { getVideoById, getSimilarVideos } from "@/lib/mock-data";
+import { getVideo, getVideos } from "@/lib/api";
 import { useUserState } from "@/lib/user-state";
 import { SubscribeButton } from "@/components/subscribe-button";
 import { VideoCard } from "@/components/video-card";
-import { formatDuration, timeAgo } from "@/lib/utils";
+import { VideoPlayer } from "@/components/video-player";
+import { timeAgo } from "@/lib/utils";
+import type { Video, Recommendation } from "@/lib/types";
 
 export default function WatchPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
-  const video = getVideoById(id);
   const { markWatched } = useUserState();
-  const similar = getSimilarVideos(id);
+  const [video, setVideo] = useState<Video | null>(null);
+  const [similar, setSimilar] = useState<Recommendation[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    Promise.all([getVideo(id), getVideos()]).then(([v, allVideos]) => {
+      setVideo(v);
+      if (v) {
+        // Simple similarity: same category or same creator, excluding current
+        const recs = allVideos
+          .filter((other) => other.id !== v.id)
+          .map((other) => {
+            const sameCreator = other.creator.id === v.creator.id;
+            const sameCategory = other.category === v.category;
+            const score = (sameCreator ? 0.4 : 0) + (sameCategory ? 0.3 : 0) + Math.random() * 0.2;
+            return {
+              video: other,
+              score,
+              reason: sameCreator
+                ? `More from ${other.creator.name}`
+                : sameCategory
+                  ? `Similar ${other.category} content`
+                  : "You might also enjoy",
+              matchedAttributes: [] as string[],
+              source: sameCreator ? ("subscription" as const) : ("discovery" as const),
+            };
+          })
+          .sort((a, b) => b.score - a.score)
+          .slice(0, 8);
+        setSimilar(recs);
+      }
+      setLoading(false);
+    });
+  }, [id]);
 
   useEffect(() => {
     if (video) markWatched(video.id);
   }, [video, markWatched]);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-[60vh]">
+        <div className="w-6 h-6 border-2 border-[var(--accent)] border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
 
   if (!video) {
     return (
@@ -31,25 +73,13 @@ export default function WatchPage({ params }: { params: Promise<{ id: string }> 
       <div className="flex flex-col lg:flex-row gap-6 px-8 pt-6">
         {/* Main player area */}
         <div className="flex-1 min-w-0">
-          {/* Player placeholder */}
-          <div
-            className="aspect-video rounded-xl overflow-hidden relative"
-            style={{ background: video.thumbnailGradient }}
-          >
-            {/* Play button centered */}
-            <div className="absolute inset-0 flex items-center justify-center">
-              <div className="w-16 h-16 rounded-full bg-[var(--accent)] flex items-center justify-center shadow-2xl cursor-pointer transition-transform hover:scale-110">
-                <svg width="24" height="24" viewBox="0 0 16 16" fill="none">
-                  <path d="M4 2L14 8L4 14V2Z" fill="#1D1C1B" />
-                </svg>
-              </div>
-            </div>
-
-            {/* Duration */}
-            <span className="absolute bottom-3 right-3 px-2 py-1 text-xs font-mono bg-black/70 text-[var(--text-primary)] rounded">
-              {formatDuration(video.duration)}
-            </span>
-          </div>
+          {/* Video Player */}
+          <VideoPlayer
+            hlsUrl={video.hlsUrl}
+            thumbnailUrl={video.thumbnailUrl}
+            title={video.title}
+            duration={video.duration}
+          />
 
           {/* Video info */}
           <div className="mt-5 space-y-4">
@@ -86,28 +116,30 @@ export default function WatchPage({ params }: { params: Promise<{ id: string }> 
               </span>
             </div>
 
-            {/* Attributes */}
-            <div className="p-4 rounded-lg bg-[var(--bg-card)] border border-[var(--border-default)]">
-              <h3 className="text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wider mb-2">
-                About this video
-              </h3>
-              <div className="flex flex-wrap gap-2">
-                {video.attributes.topic.map((t) => (
-                  <span
-                    key={t}
-                    className="px-2 py-0.5 text-xs text-[var(--text-secondary)] bg-[var(--bg-elevated)] rounded-full"
-                  >
-                    {t}
+            {/* Attributes — shown when available from Analyze API */}
+            {video.attributes && (
+              <div className="p-4 rounded-lg bg-[var(--bg-card)] border border-[var(--border-default)]">
+                <h3 className="text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wider mb-2">
+                  About this video
+                </h3>
+                <div className="flex flex-wrap gap-2">
+                  {video.attributes.topic.map((t) => (
+                    <span
+                      key={t}
+                      className="px-2 py-0.5 text-xs text-[var(--text-secondary)] bg-[var(--bg-elevated)] rounded-full"
+                    >
+                      {t}
+                    </span>
+                  ))}
+                  <span className="px-2 py-0.5 text-xs text-[var(--accent)] bg-[var(--accent-muted)] rounded-full">
+                    {video.attributes.style}
                   </span>
-                ))}
-                <span className="px-2 py-0.5 text-xs text-[var(--accent)] bg-[var(--accent-muted)] rounded-full">
-                  {video.attributes.style}
-                </span>
-                <span className="px-2 py-0.5 text-xs text-[var(--text-tertiary)] bg-[var(--bg-elevated)] rounded-full">
-                  {video.attributes.tone}
-                </span>
+                  <span className="px-2 py-0.5 text-xs text-[var(--text-tertiary)] bg-[var(--bg-elevated)] rounded-full">
+                    {video.attributes.tone}
+                  </span>
+                </div>
               </div>
-            </div>
+            )}
           </div>
         </div>
 

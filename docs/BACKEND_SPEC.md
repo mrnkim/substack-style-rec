@@ -182,6 +182,14 @@ Creator detail + video list.
 ```
 
 **Logic:**
+
+**Cold start fallback** (when `watch_history` is empty):
+1. If `subscriptions` is non-empty → return latest videos from subscribed creators, padded with recent videos from other creators for discovery
+2. If `subscriptions` is also empty → return editorially curated or most recent videos across all creators
+3. Apply creator diversity (max 2 per creator) and return with `source: "subscription"` or `"discovery"` accordingly
+4. Set `score: null` and `reason: "New to you"` (no similarity basis)
+
+**Standard flow** (when `watch_history` is non-empty):
 1. Query `.similarity()` using embeddings of videos in `watch_history`
 2. Exclude already-watched videos
 3. **70/30 balancing**:
@@ -315,6 +323,47 @@ INSERT video
 ```
 
 **Note**: Video download and Twelve Labs indexing are handled by separate pre-processing scripts.
+
+### Analyze API Prompt
+
+Use this prompt in the Twelve Labs Analyze API computed column to extract attributes. The prompt constrains style and tone to fixed enums so recommendation matching is deterministic.
+
+```
+Analyze this video and extract the following attributes. Return valid JSON only.
+
+{
+  "topic": ["topic1", "topic2", ...],   // 2-5 key topics, free-form strings
+  "style": "one_of_enum",               // pick ONE from the list below
+  "tone": "one_of_enum"                 // pick ONE from the list below
+}
+
+style options (pick exactly one):
+- "interview": one-on-one or panel conversation with a guest
+- "documentary": narrative-driven visual storytelling, observational
+- "essay": opinion-driven, first-person argument or reflection
+- "tutorial": step-by-step instructional or how-to content
+- "conversation": casual multi-person discussion, podcast-style
+- "analysis": data-driven or research-backed breakdown of a topic
+- "performance": music, comedy, art, or live performance
+- "explainer": educational breakdown of a concept using visuals or animation
+
+tone options (pick exactly one):
+- "serious": formal, weighty subject matter, measured delivery
+- "casual": relaxed, informal, conversational energy
+- "playful": lighthearted, humorous, fun
+- "contemplative": reflective, slow-paced, thought-provoking
+- "energetic": fast-paced, enthusiastic, high energy
+- "analytical": methodical, logic-driven, data-focused
+```
+
+### Credentials Required from TwelveLabs Team
+
+The PixelTable team needs these values (provided by us) to configure the computed columns:
+
+| Variable | Description | Provided by |
+|---|---|---|
+| `TWELVELABS_API_KEY` | API key for Embed + Analyze calls | TwelveLabs team |
+| `TWELVELABS_INDEX_ID` | Index ID where videos are indexed (created after upload) | TwelveLabs team |
 
 ## Setup Script Pattern
 
