@@ -266,11 +266,13 @@ Semantic video search.
 
 **Query params:**
 - `q` (string, required) — search query
+- `creator_id` (string, optional) — scope search to a single creator's catalog
 - `limit` (int, default 10)
 
 **Logic:**
 1. PixelTable `.similarity(string=q)` — text-to-video cross-modal search
-2. Rank by similarity score
+2. If `creator_id` provided, filter to only that creator's videos
+3. Rank by similarity score
 
 **Response:**
 ```json
@@ -289,9 +291,11 @@ Semantic video search.
 
 Logic for generating natural-language recommendation reasons:
 
-1. Compare `attributes` (topic, style, tone) between source and recommended videos
-2. Extract 2-3 overlapping attributes
-3. Generate from templates:
+1. For each recommended video, identify which video in `watch_history` had the highest similarity score — this is the **source video**
+2. Compare `attributes` (topic, style, tone) between source and recommended videos
+3. Extract 2-3 overlapping attributes
+4. Generate from templates, prefixed with source video context:
+   - Source context: "Because you watched '{source_video_title}'"
    - Topic match: "Also covers {topic}"
    - Style match: "Similar {style} format"
    - Tone match: "Matching {tone} tone"
