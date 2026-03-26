@@ -72,7 +72,7 @@ export default function CreatorPage({ params }: { params: Promise<{ id: string }
 
           <div className="flex-1">
             <div className="flex items-center gap-4 mb-2">
-              <h1 className="text-2xl font-bold text-[var(--text-primary)] font-[family-name:var(--font-display)] italic">
+              <h1 className="text-2xl font-bold text-[var(--text-primary)] font-[family-name:var(--font-brand)]">
                 {creator.name}
               </h1>
               <SubscribeButton creatorId={creator.id} />

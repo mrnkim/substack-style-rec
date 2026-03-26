@@ -1,25 +1,19 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
-import { Instrument_Serif } from "next/font/google";
+import { Noto_Sans, IBM_Plex_Mono } from "next/font/google";
 import { UserStateProvider } from "@/lib/user-state";
 import { Nav } from "@/components/nav";
 import "./globals.css";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
+const notoSans = Noto_Sans({
+  variable: "--font-noto-sans",
   subsets: ["latin"],
+  weight: ["400", "500", "600", "700"],
 });
 
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
+const ibmPlexMono = IBM_Plex_Mono({
+  variable: "--font-ibm-plex-mono",
   subsets: ["latin"],
-});
-
-const instrumentSerif = Instrument_Serif({
-  variable: "--font-display",
-  subsets: ["latin"],
-  weight: "400",
-  style: ["normal", "italic"],
+  weight: ["400", "700"],
 });
 
 export const metadata: Metadata = {
@@ -36,9 +30,9 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} ${instrumentSerif.variable} h-full antialiased`}
+      className={`${notoSans.variable} ${ibmPlexMono.variable} h-full antialiased`}
     >
-      <body className="noise min-h-full flex flex-col font-[family-name:var(--font-geist-sans)]">
+      <body className="noise min-h-full flex flex-col font-[family-name:var(--font-sans)]">
         <UserStateProvider>
           <Nav />
           <main className="flex-1 pt-14">{children}</main>

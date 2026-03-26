@@ -47,7 +47,7 @@ function SearchResults() {
     <div className="pb-16 animate-fade-up">
       {/* Header */}
       <div className="px-8 pt-10 pb-6">
-        <h1 className="text-3xl font-bold text-[var(--text-primary)] font-[family-name:var(--font-display)] italic mb-6">
+        <h1 className="text-3xl font-bold text-[var(--text-primary)] font-[family-name:var(--font-brand)] mb-6">
           Search
         </h1>
         <div className="max-w-2xl">

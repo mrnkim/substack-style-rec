@@ -49,7 +49,7 @@ export default function ExplorePage() {
     <div className="pb-16 animate-fade-up">
       {/* Header */}
       <div className="px-8 pt-10 pb-8">
-        <h1 className="text-3xl font-bold text-[var(--text-primary)] font-[family-name:var(--font-display)] italic">
+        <h1 className="text-3xl font-bold text-[var(--text-primary)] font-[family-name:var(--font-brand)]">
           Explore
         </h1>
         <p className="text-sm text-[var(--text-secondary)] mt-2 max-w-lg">

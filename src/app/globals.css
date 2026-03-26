@@ -5,6 +5,28 @@
  * Brand green (#00DC82) as primary accent on warm charcoal backgrounds.
  */
 
+/* ── Strand Font Declarations ── */
+@font-face {
+  font-family: 'Milling';
+  font-style: normal;
+  font-weight: 400;
+  src: url('https://d2n8i6crd2t3p1.cloudfront.net/font/milling/205TF-Milling-Duplex1mm.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF,
+    U+0300-036F, U+0370-03FF, U+0400-04FF, U+0500-052F, U+1C80-1C8A, U+1D00-1DBF, U+1E00-1EFF,
+    U+2000-206F, U+20A0-20CF, U+2100-214F, U+2190-21FF, U+2200-22FF, U+2C60-2C7F, U+A720-A7FF,
+    U+FE20-FE2F;
+}
+@font-face {
+  font-family: 'Milling';
+  font-style: normal;
+  font-weight: 700;
+  src: url('https://d2n8i6crd2t3p1.cloudfront.net/font/milling/205TF-Milling-Triplex1mm.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF,
+    U+0300-036F, U+0370-03FF, U+0400-04FF, U+0500-052F, U+1C80-1C8A, U+1D00-1DBF, U+1E00-1EFF,
+    U+2000-206F, U+20A0-20CF, U+2100-214F, U+2190-21FF, U+2200-22FF, U+2C60-2C7F, U+A720-A7FF,
+    U+FE20-FE2F;
+}
+
 :root {
   /* ── Backgrounds (warm charcoal, strand-derived) ─── */
   --bg-primary: #0c0b0a;
@@ -51,8 +73,9 @@
 @theme inline {
   --color-background: var(--bg-primary);
   --color-foreground: var(--text-primary);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-sans: 'Noto Sans', Helvetica, Arial, sans-serif;
+  --font-mono: 'IBM Plex Mono', monospace;
+  --font-brand: 'Milling', 'Noto Sans', Helvetica, Arial, sans-serif;
 }
 
 /* ── Base ─── */

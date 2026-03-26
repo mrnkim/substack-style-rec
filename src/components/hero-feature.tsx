@@ -35,7 +35,7 @@ export function HeroFeature({ video }: HeroFeatureProps) {
         </div>
 
         {/* Title */}
-        <h1 className="text-4xl md:text-5xl font-bold leading-tight tracking-tight text-[var(--text-primary)] font-[family-name:var(--font-display)] italic mb-3">
+        <h1 className="text-4xl md:text-5xl font-bold leading-tight tracking-tight text-[var(--text-primary)] font-[family-name:var(--font-brand)] mb-3">
           {video.title}
         </h1>
 
