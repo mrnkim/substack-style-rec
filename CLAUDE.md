@@ -7,36 +7,57 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Commands
 
 ```bash
+# Frontend
 npm run dev          # Start dev server (localhost:3000)
 npm run build        # Production build
 npm run lint         # ESLint (flat config, eslint.config.mjs)
 npm start            # Serve production build
+
+# Backend (run from backend/ directory)
+pip install -e .                       # Install Python deps
+python setup_pixeltable.py             # Initialize PixelTable schema (idempotent)
+python ingest.py                       # Load data from TL index (metadata + text embeddings)
+python ingest.py --with-videos         # Also include video file paths for segment embeddings
+python download_videos.py              # Download video files from YouTube (yt-dlp)
+python main.py                         # Start FastAPI on :8000
 ```
 
 No test framework is configured yet.
 
 ## Architecture
 
-Substack TV-style video recommendation engine demo. Next.js 16 frontend that fetches video data from Twelve Labs API (25 videos, HLS streaming). Will connect to a FastAPI + PixelTable backend for embedding-based recommendations.
+Substack TV-style video recommendation engine demo. Next.js 16 frontend + FastAPI/PixelTable backend with Twelve Labs Marengo 3.0 embeddings for semantic recommendations.
 
 ```
-Pages → src/lib/api.ts → /api/* routes → src/lib/twelve-labs.ts → Twelve Labs API
-                          (future: swap to PixelTable FastAPI URL)
+Pages → src/lib/api.ts → FastAPI backend (backend/) → PixelTable → TL Embed/Generate APIs
+         API_BASE          or Next.js /api/* routes → TL API direct
 ```
 
-### Frontend (this repo)
+### Frontend
 
 - **Next.js 16** App Router with React 19, TypeScript, Tailwind CSS v4
 - Path alias: `@/*` maps to `./src/*`
 - All pages in `src/app/` (dynamic routes: `[id]`), all client components
-- API routes in `src/app/api/` proxy Twelve Labs API
+- API routes in `src/app/api/` proxy Twelve Labs API (fallback when no backend)
 - Shared components in `src/components/`
 - Data layer + types in `src/lib/`
+- `NEXT_PUBLIC_API_BASE` env var switches between Next.js routes and FastAPI backend
+
+### Backend (backend/)
+
+- **FastAPI** with PixelTable as unified data layer
+- **`backend/main.py`** — App entry, CORS, lifespan, router includes
+- **`backend/config.py`** — Env vars, TL API config, creator descriptions, Analyze prompt
+- **`backend/models.py`** — Pydantic models with camelCase serialization matching `types.ts`
+- **`backend/setup_pixeltable.py`** — Schema: creators + videos tables, Marengo embedding index, Analyze API computed columns
+- **`backend/ingest.py`** — Fetches 25 videos from TL index, inserts into PixelTable
+- **`backend/functions.py`** — `analyze_video` UDF (TL Generate API), `generate_reason` for rec explanations
+- **`backend/routers/`** — videos, creators, recommendations, search
 
 ### Key layers
 
 - **`src/lib/twelve-labs.ts`** — Server-side TL API client; fetches videos from index, maps `user_metadata` to `Video` type
-- **`src/lib/api.ts`** — Client-side fetch helpers (`getVideos`, `getVideo`, `getCreators`, `getCreator`). Change `API_BASE` to swap to PixelTable
+- **`src/lib/api.ts`** — Client-side fetch helpers: `getVideos`, `getVideo`, `getCreators`, `getCreator`, `getForYouRecommendations`, `getSimilarVideos`, `getCreatorCatalog`, `searchVideos`
 - **`src/lib/types.ts`** — Core domain types: `Video`, `Creator`, `Recommendation`, `UserState`; `attributes` is optional (populated when Analyze API runs)
 - **`src/lib/user-state.tsx`** — React Context for simulated user state (subscriptions + watch history), persisted to localStorage under key `substack-rec-user-state`
 - **`src/components/video-player.tsx`** — HLS video player using hls.js
@@ -51,7 +72,7 @@ Pages → src/lib/api.ts → /api/* routes → src/lib/twelve-labs.ts → Twelve
 | `/explore` | `src/app/explore/page.tsx` |
 | `/search` | `src/app/search/page.tsx` |
 
-### API Routes
+### API Routes (Next.js — fallback)
 
 | Route | Source |
 |---|---|
@@ -59,6 +80,19 @@ Pages → src/lib/api.ts → /api/* routes → src/lib/twelve-labs.ts → Twelve
 | `GET /api/videos/[id]` | `src/app/api/videos/[id]/route.ts` |
 | `GET /api/creators` | `src/app/api/creators/route.ts` |
 | `GET /api/creators/[id]` | `src/app/api/creators/[id]/route.ts` |
+
+### API Routes (FastAPI backend)
+
+| Route | Source |
+|---|---|
+| `GET /api/videos` | `backend/routers/videos.py` |
+| `GET /api/videos/:id` | `backend/routers/videos.py` |
+| `GET /api/creators` | `backend/routers/creators.py` |
+| `GET /api/creators/:id` | `backend/routers/creators.py` |
+| `POST /api/recommendations/for-you` | `backend/routers/recommendations.py` |
+| `POST /api/recommendations/similar` | `backend/routers/recommendations.py` |
+| `POST /api/recommendations/creator-catalog` | `backend/routers/recommendations.py` |
+| `GET /api/search?q=` | `backend/routers/search.py` |
 
 ### Design system
 
@@ -69,8 +103,15 @@ Pages → src/lib/api.ts → /api/* routes → src/lib/twelve-labs.ts → Twelve
 ### Environment variables
 
 ```
-TWELVELABS_API_KEY=tlk_...    # Required, in .env.local
-TWELVELABS_INDEX_ID=...       # Required, in .env.local
+# Frontend (.env.local)
+TWELVELABS_API_KEY=tlk_...                       # Required
+TWELVELABS_INDEX_ID=...                          # Required
+NEXT_PUBLIC_API_BASE=http://localhost:8000/api    # Optional: use PixelTable backend
+
+# Backend (backend/.env)
+TWELVELABS_API_KEY=tlk_...
+TWELVELABS_INDEX_ID=69c37b6708cd679f8afbd748
+CORS_ORIGINS=http://localhost:3000
 ```
 
 ### Scripts
@@ -81,4 +122,4 @@ TWELVELABS_INDEX_ID=...       # Required, in .env.local
 
 ## Current state
 
-Phase 1 complete: 25 real videos from Twelve Labs index with HLS playback, CloudFront thumbnails, 10 creators. Video attributes (topic/style/tone) not yet extracted. Next: PixelTable integration for embedding-based recommendations. See `HANDOFF.md` for full status.
+Fully implemented. 25 videos from Twelve Labs index with HLS playback, 10 creators. FastAPI + PixelTable backend provides Marengo 3.0 embedding-based recommendations (text embeddings on titles + 1,409 video segment embeddings), Analyze API attribute extraction, semantic search, explainable recommendations with 70/30 subscription/discovery balancing, and creator diversity. See `HANDOFF.md` for full status.

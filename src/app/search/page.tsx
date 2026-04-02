@@ -2,7 +2,7 @@
 
 import { useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
-import { getVideos } from "@/lib/api";
+import { getVideos, searchVideos } from "@/lib/api";
 import { SearchInput } from "@/components/search-input";
 import { VideoCard } from "@/components/video-card";
 import type { Video } from "@/lib/types";
@@ -10,28 +10,33 @@ import type { Video } from "@/lib/types";
 function SearchResults() {
   const searchParams = useSearchParams();
   const query = searchParams.get("q") || "";
-  const [videos, setVideos] = useState<Video[]>([]);
+  const [allVideos, setAllVideos] = useState<Video[]>([]);
+  const [results, setResults] = useState<Video[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     getVideos().then((v) => {
-      setVideos(v);
-      setLoading(false);
+      setAllVideos(v);
+      if (!query) setLoading(false);
     });
-  }, []);
+  }, [query]);
 
-  // Client-side search (will be replaced by semantic search via PixelTable)
-  const results = query
-    ? videos.filter(
-        (v) =>
-          v.title.toLowerCase().includes(query.toLowerCase()) ||
-          v.creator.name.toLowerCase().includes(query.toLowerCase()) ||
-          v.category.toLowerCase().includes(query.toLowerCase()) ||
-          (v.attributes?.topic.some((t) =>
-            t.toLowerCase().includes(query.toLowerCase()),
-          ) ?? false),
-      )
-    : [];
+  useEffect(() => {
+    if (!query) {
+      setResults([]);
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
+    searchVideos(query, { limit: 20 })
+      .then((data) => {
+        setResults(data.results.map((r) => r.video));
+      })
+      .catch(() => {
+        setResults([]);
+      })
+      .finally(() => setLoading(false));
+  }, [query]);
 
   const topics = ["AI", "music", "interview", "branding", "mathematics", "creator economy"];
 
@@ -103,7 +108,7 @@ function SearchResults() {
               Browse All
             </h2>
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-5 stagger">
-              {videos.map((video) => (
+              {allVideos.map((video) => (
                 <div key={video.id} className="animate-fade-up">
                   <VideoCard video={video} />
                 </div>
