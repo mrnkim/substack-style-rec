@@ -52,11 +52,6 @@ app.include_router(recommendations.router)
 app.include_router(search.router)
 
 
-@app.get("/api/health")
-def health():
-    return {"status": "ok"}
-
-
 if __name__ == "__main__":
     import uvicorn
 
