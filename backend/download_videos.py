@@ -1,4 +1,4 @@
-"""Re-download video files from YouTube for Phase 2 video segment embeddings.
+"""Download video files from YouTube for video segment embeddings.
 
 Reads YouTube IDs from scripts/videos_metadata.csv and downloads each video
 into backend/data/videos/ using yt-dlp.

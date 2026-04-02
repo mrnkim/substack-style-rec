@@ -7,7 +7,7 @@ import pixeltable as pxt
 
 import config
 from models import SearchResponse, SearchResultItem
-from routers.videos import _attach_attrs, _build_video_response, _load_creators_map
+from routers.videos import VIDEO_FIELDS, _attach_attrs, _build_video_response, _load_creators_map
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api", tags=["search"])
@@ -23,31 +23,23 @@ def search_videos(
     creators_map = _load_creators_map()
 
     sim = videos_t.title.similarity(string=q)
-
     query = videos_t
     if creator_id:
         query = query.where(videos_t.creator_id == creator_id)
 
+    cols = [getattr(videos_t, f) for f in VIDEO_FIELDS]
     rows = list(
-        query.order_by(sim, asc=False)
-        .limit(limit)
-        .select(
-            videos_t.id, videos_t.title, videos_t.creator_id,
-            videos_t.category, videos_t.duration, videos_t.thumbnail_url,
-            videos_t.hls_url, videos_t.upload_date,
-            score=sim,
-        )
-        .collect()
+        query.order_by(sim, asc=False).limit(limit).select(*cols, score=sim).collect()
     )
-
     _attach_attrs(rows, videos_t)
 
-    results = [
-        SearchResultItem(
-            video=_build_video_response(row, creators_map),
-            score=round(row.get("score", 0.0), 4),
-        )
-        for row in rows
-    ]
-
-    return SearchResponse(query=q, results=results)
+    return SearchResponse(
+        query=q,
+        results=[
+            SearchResultItem(
+                video=_build_video_response(row, creators_map),
+                score=round(row.get("score", 0.0), 4),
+            )
+            for row in rows
+        ],
+    )

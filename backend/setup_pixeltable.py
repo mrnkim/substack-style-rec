@@ -1,11 +1,11 @@
-"""Schema definition for the Substack Rec PixelTable backend.
+"""PixelTable schema definition.
 
 Run once to initialize the database schema:
     python setup_pixeltable.py
 
-This is idempotent — safe to re-run without losing data.
-The schema includes all phases (video column, segment view, etc.)
-and gracefully skips parts that depend on video files being present.
+Idempotent — safe to re-run without losing data. The video segment
+view and its embedding index are created automatically when video
+files have been ingested.
 """
 import logging
 
@@ -24,10 +24,9 @@ marengo = embed.using(model_name="marengo3.0")
 
 def setup():
     logger.info("Initializing PixelTable schema under '%s'...", config.APP_NAMESPACE)
-
     pxt.create_dir(config.APP_NAMESPACE, if_exists="ignore")
 
-    # -- 1. Creators table ---------------------------------------------------
+    # -- Creators table -------------------------------------------------------
 
     pxt.create_table(
         f"{config.APP_NAMESPACE}.creators",
@@ -42,7 +41,7 @@ def setup():
     )
     logger.info("  creators table ready")
 
-    # -- 2. Videos table (includes video column for segment embeddings) ------
+    # -- Videos table ---------------------------------------------------------
 
     videos = pxt.create_table(
         f"{config.APP_NAMESPACE}.videos",
@@ -62,34 +61,29 @@ def setup():
     )
     logger.info("  videos table ready")
 
-    # -- 3. Marengo 3.0 text embedding index on title ------------------------
+    # -- Marengo 3.0 embedding index on title ---------------------------------
 
     videos.add_embedding_index(
         "title", string_embed=marengo, idx_name="title_marengo", if_exists="ignore",
     )
-    logger.info("  Marengo 3.0 text embedding index on title ready")
+    logger.info("  Marengo 3.0 embedding index on title ready")
 
-    # -- 4. Analyze API computed columns -------------------------------------
+    # -- Analyze API computed columns (topic, style, tone) --------------------
 
-    videos.add_computed_column(
-        raw_attributes=analyze_video(videos.id),
-        if_exists="ignore",
-    )
+    videos.add_computed_column(raw_attributes=analyze_video(videos.id), if_exists="ignore")
     videos.add_computed_column(topic=videos.raw_attributes["topic"], if_exists="ignore")
     videos.add_computed_column(style=videos.raw_attributes["style"], if_exists="ignore")
     videos.add_computed_column(tone=videos.raw_attributes["tone"], if_exists="ignore")
     logger.info("  Analyze API computed columns (topic, style, tone) ready")
 
-    # -- 5. Video segment view + Marengo video embedding index ---------------
-    #    Only created when at least one video has a file path set.
-    #    If no video files exist yet, this section is skipped and can be
-    #    triggered later by re-running setup after ingesting with video paths.
+    # -- Video segment view + Marengo video embedding index -------------------
+    #    Created when at least one video has a file path set. Re-run setup
+    #    after ingesting with --with-videos to enable.
 
     view_name = f"{config.APP_NAMESPACE}.video_segments"
     has_video_files = False
     try:
-        count = videos.where(videos.video != None).count()
-        has_video_files = count > 0
+        has_video_files = videos.where(videos.video != None).count() > 0
     except Exception:
         pass
 
@@ -109,15 +103,11 @@ def setup():
 
         segments = pxt.get_table(view_name)
         segments.add_embedding_index(
-            "video_segment",
-            embedding=marengo,
-            idx_name="segment_marengo",
-            if_exists="ignore",
+            "video_segment", embedding=marengo, idx_name="segment_marengo", if_exists="ignore",
         )
         logger.info("  Marengo 3.0 video embedding index on segments ready")
     else:
-        logger.info("  Skipping video_segments view (no video files yet)")
-        logger.info("  To enable: run download_videos.py, then ingest with --with-videos, then re-run setup")
+        logger.info("  Skipping video_segments (no video files — run download_videos.py + ingest --with-videos)")
 
     logger.info("\nSchema setup complete.")
 
