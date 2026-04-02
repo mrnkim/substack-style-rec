@@ -64,7 +64,9 @@ def setup():
 
     # -- 3. Marengo 3.0 text embedding index on title ------------------------
 
-    videos.add_embedding_index("title", string_embed=marengo, if_exists="ignore")
+    videos.add_embedding_index(
+        "title", string_embed=marengo, idx_name="title_marengo", if_exists="ignore",
+    )
     logger.info("  Marengo 3.0 text embedding index on title ready")
 
     # -- 4. Analyze API computed columns -------------------------------------
@@ -109,6 +111,7 @@ def setup():
         segments.add_embedding_index(
             "video_segment",
             embedding=marengo,
+            idx_name="segment_marengo",
             if_exists="ignore",
         )
         logger.info("  Marengo 3.0 video embedding index on segments ready")
