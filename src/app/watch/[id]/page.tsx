@@ -18,21 +18,15 @@ export default function WatchPage({ params }: { params: Promise<{ id: string }> 
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const loadData = async () => {
-      const [v, recs] = await Promise.all([
-        getVideo(id),
-        getSimilarVideos(id, watchHistory, 8),
-      ]);
-      setVideo(v);
-      setSimilar(recs);
-      setLoading(false);
-    };
-    loadData();
-  }, [id, watchHistory]);
-
-  useEffect(() => {
-    if (video) markWatched(video.id);
-  }, [video, markWatched]);
+    Promise.all([getVideo(id), getSimilarVideos(id, watchHistory, 8)]).then(
+      ([v, recs]) => {
+        setVideo(v);
+        setSimilar(recs);
+        if (v) markWatched(v.id);
+        setLoading(false);
+      },
+    );
+  }, [id, watchHistory, markWatched]);
 
   if (loading) {
     return (
