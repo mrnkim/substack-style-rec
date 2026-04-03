@@ -1,7 +1,7 @@
 [project]
 name = "substack-rec-backend"
 version = "0.1.0"
-description = "FastAPI + PixelTable backend for Substack TV-style video recommendations"
+description = "FastAPI + Pixeltable backend for Substack TV-style video recommendations"
 requires-python = ">=3.10"
 dependencies = [
     "pixeltable>=0.5.24",

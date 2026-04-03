@@ -1,4 +1,4 @@
-"""Semantic video search via PixelTable .similarity()."""
+"""Semantic video search via Pixeltable .similarity()."""
 
 import logging
 from typing import Optional

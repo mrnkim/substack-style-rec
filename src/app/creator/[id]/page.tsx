@@ -105,7 +105,7 @@ export default function CreatorPage({ params }: { params: Promise<{ id: string }
 
       {/* Video grid */}
       <div className="px-8 mt-4 space-y-10">
-        {/* Recommended from this creator (relevance-sorted via PixelTable) */}
+        {/* Recommended from this creator (relevance-sorted via Pixeltable) */}
         {recommended.length > 0 && watchHistory.length > 0 && (
           <VideoRow
             title="Recommended from this creator"

@@ -23,10 +23,10 @@ No test framework is configured yet.
 
 ## Architecture
 
-Substack TV-style video recommendation engine demo. Next.js 16 frontend + FastAPI/PixelTable backend with Twelve Labs Marengo 3.0 embeddings for semantic recommendations.
+Substack TV-style video recommendation engine demo. Next.js 16 frontend + FastAPI/Pixeltable backend with Twelve Labs Marengo 3.0 embeddings for semantic recommendations.
 
 ```
-Pages → src/lib/api.ts → FastAPI backend (backend/) → PixelTable → TL Embed/Generate APIs
+Pages → src/lib/api.ts → FastAPI backend (backend/) → Pixeltable → TL Embed/Generate APIs
          API_BASE          or Next.js /api/* routes → TL API direct
 ```
 
@@ -42,7 +42,7 @@ Pages → src/lib/api.ts → FastAPI backend (backend/) → PixelTable → TL Em
 
 ### Backend (backend/)
 
-- **FastAPI** with PixelTable as unified data layer
+- **FastAPI** with Pixeltable as unified data layer
 - **`backend/main.py`** — App entry, CORS, lifespan, router includes
 - **`backend/config.py`** — Env vars, TL API config, creator descriptions, Analyze prompt
 - **`backend/models.py`** — Pydantic models with camelCase serialization matching `types.ts`
@@ -102,7 +102,7 @@ Pages → src/lib/api.ts → FastAPI backend (backend/) → PixelTable → TL Em
 # Frontend (.env.local)
 TWELVELABS_API_KEY=tlk_...                       # Required
 TWELVELABS_INDEX_ID=...                          # Required
-NEXT_PUBLIC_API_BASE=http://localhost:8000/api    # Optional: use PixelTable backend
+NEXT_PUBLIC_API_BASE=http://localhost:8000/api    # Optional: use Pixeltable backend
 
 # Backend (backend/.env)
 TWELVELABS_API_KEY=tlk_...
@@ -118,4 +118,4 @@ CORS_ORIGINS=http://localhost:3000
 
 ## Current state
 
-Fully implemented. 25 videos from Twelve Labs index with HLS playback, 10 creators. FastAPI + PixelTable backend provides Marengo 3.0 embedding-based recommendations (text embeddings on titles + 1,409 video segment embeddings), Analyze API attribute extraction, semantic search, explainable recommendations with 70/30 subscription/discovery balancing, and creator diversity. See `HANDOFF.md` for full status.
+Fully implemented. 25 videos from Twelve Labs index with HLS playback, 10 creators. FastAPI + Pixeltable backend provides Marengo 3.0 embedding-based recommendations (text embeddings on titles + 1,409 video segment embeddings), Analyze API attribute extraction, semantic search, explainable recommendations with 70/30 subscription/discovery balancing, and creator diversity. See `HANDOFF.md` for full status.

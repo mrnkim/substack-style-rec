@@ -58,7 +58,7 @@ def _attach_attrs(rows: list[dict], videos_t) -> None:
 
 
 def _build_video_response(row: dict, creators_map: dict[str, dict]) -> VideoResponse:
-    """Convert a PixelTable row dict into a VideoResponse with nested creator."""
+    """Convert a Pixeltable row dict into a VideoResponse with nested creator."""
     cid = row.get("creator_id", "")
     cdata = creators_map.get(cid, {})
 

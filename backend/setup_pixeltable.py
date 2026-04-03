@@ -1,4 +1,4 @@
-"""PixelTable schema + data setup.
+"""Pixeltable schema + data setup.
 
 Creates tables, indexes, computed columns, and loads video data from
 the Twelve Labs index. Run once — everything is idempotent.
@@ -28,7 +28,7 @@ def strip_extension(filename: str) -> str:
 
 
 def setup():
-    logger.info("Setting up PixelTable under '%s'...", config.APP_NAMESPACE)
+    logger.info("Setting up Pixeltable under '%s'...", config.APP_NAMESPACE)
     pxt.create_dir(config.APP_NAMESPACE, if_exists="ignore")
 
     # -- Schema ---------------------------------------------------------------

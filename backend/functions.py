@@ -2,7 +2,6 @@
 
 import json
 import logging
-import re
 
 import httpx
 import pixeltable as pxt
@@ -10,11 +9,6 @@ import pixeltable as pxt
 import config
 
 logger = logging.getLogger(__name__)
-
-
-# ---------------------------------------------------------------------------
-# Analyze API UDF — extracts topic/style/tone from TL-indexed videos
-# ---------------------------------------------------------------------------
 
 VALID_STYLES = frozenset(
     {
@@ -43,34 +37,30 @@ VALID_TONES = frozenset(
 
 @pxt.udf
 def analyze_video(video_id: str) -> dict:
-    """
-    Call Twelve Labs Analyze API to extract topic, style, and tone attributes.
-
-    The video must already be indexed in the TL index. Returns a dict with keys:
-    topic (list[str]), style (str), tone (str).
-    """
+    """Call Twelve Labs Analyze API to extract topic, style, and tone."""
     url = f"{config.TWELVELABS_BASE_URL}/analyze"
     headers = {
         "x-api-key": config.TWELVELABS_API_KEY,
         "Content-Type": "application/json",
     }
-    payload = {
-        "video_id": video_id,
-        "prompt": config.ANALYZE_PROMPT,
-    }
+    payload = {"video_id": video_id, "prompt": config.ANALYZE_PROMPT}
 
     try:
         resp = httpx.post(url, json=payload, headers=headers, timeout=120.0)
         resp.raise_for_status()
-        data = resp.json()
-        text = data.get("data", "")
 
-        # Extract JSON from the response text (handles nested objects)
-        json_match = re.search(r"\{.*\}", text, re.DOTALL)
-        if json_match:
-            attrs = json.loads(json_match.group())
-        else:
-            attrs = json.loads(text)
+        # TL Analyze API returns streaming NDJSON — concatenate text fragments
+        text_parts: list[str] = []
+        for line in resp.text.strip().splitlines():
+            try:
+                event = json.loads(line)
+                if event.get("event_type") == "text_generation":
+                    text_parts.append(event.get("text", ""))
+            except json.JSONDecodeError:
+                continue
+        full_text = "".join(text_parts)
+
+        attrs = json.loads(full_text)
 
         topic = attrs.get("topic", [])
         if not isinstance(topic, list):
@@ -92,8 +82,7 @@ def analyze_video(video_id: str) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# Recommendation reason generation (spec: BACKEND_SPEC.md §Recommendation
-# Explanation Generation)
+# Recommendation reason generation
 # ---------------------------------------------------------------------------
 
 
@@ -114,8 +103,7 @@ def generate_reason(
     tgt_topics = set(target_video.get("topic") or [])
     overlap = src_topics & tgt_topics
     if overlap:
-        topics_str = ", ".join(list(overlap)[:2])
-        parts.append(f"Also covers {topics_str}")
+        parts.append(f"Also covers {', '.join(list(overlap)[:2])}")
 
     src_style = source_video.get("style")
     tgt_style = target_video.get("style")
@@ -135,7 +123,6 @@ def generate_reason(
 
     if not parts:
         return "Recommended for you"
-
     if len(parts) == 1:
         return parts[0]
     return f"{parts[0]} — {' · '.join(parts[1:])}"

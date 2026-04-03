@@ -25,10 +25,10 @@ logging.getLogger("pixeltable_pgserver").setLevel(logging.WARNING)
 async def lifespan(app: FastAPI):
     try:
         pxt.get_table(f"{config.APP_NAMESPACE}.videos")
-        logger.info("Connected to PixelTable schema")
+        logger.info("Connected to Pixeltable schema")
     except Exception:
         logger.warning(
-            "PixelTable schema not initialized. "
+            "Pixeltable schema not initialized. "
             "Run 'uv run setup_pixeltable.py' first. "
             "The server will start but API calls will fail."
         )
@@ -37,7 +37,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="Substack Rec Backend",
-    description="PixelTable-powered video recommendations for Substack TV demo",
+    description="Pixeltable-powered video recommendations for Substack TV demo",
     version="0.1.0",
     lifespan=lifespan,
 )

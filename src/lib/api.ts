@@ -3,7 +3,7 @@
  *
  * Switch API_BASE to toggle between:
  *   "/api"                        — Next.js API routes (Twelve Labs direct)
- *   "http://localhost:8000/api"   — PixelTable FastAPI backend
+ *   "http://localhost:8000/api"   — Pixeltable FastAPI backend
  */
 
 import type { Video, Creator, Recommendation } from "./types";
