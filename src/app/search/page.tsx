@@ -2,7 +2,7 @@
 
 import { useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
-import { getVideos } from "@/lib/api";
+import { getVideos, searchVideos } from "@/lib/api";
 import { SearchInput } from "@/components/search-input";
 import { VideoCard } from "@/components/video-card";
 import type { Video } from "@/lib/types";
@@ -10,28 +10,18 @@ import type { Video } from "@/lib/types";
 function SearchResults() {
   const searchParams = useSearchParams();
   const query = searchParams.get("q") || "";
-  const [videos, setVideos] = useState<Video[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [videos, setVideos] = useState<Video[] | null>(null);
 
   useEffect(() => {
-    getVideos().then((v) => {
-      setVideos(v);
-      setLoading(false);
-    });
-  }, []);
+    let stale = false;
+    const promise = query
+      ? searchVideos(query, { limit: 20 }).then((d) => d.results.map((r) => r.video))
+      : getVideos();
+    promise.then((v) => { if (!stale) setVideos(v); });
+    return () => { stale = true; };
+  }, [query]);
 
-  // Client-side search (will be replaced by semantic search via PixelTable)
-  const results = query
-    ? videos.filter(
-        (v) =>
-          v.title.toLowerCase().includes(query.toLowerCase()) ||
-          v.creator.name.toLowerCase().includes(query.toLowerCase()) ||
-          v.category.toLowerCase().includes(query.toLowerCase()) ||
-          (v.attributes?.topic.some((t) =>
-            t.toLowerCase().includes(query.toLowerCase()),
-          ) ?? false),
-      )
-    : [];
+  const loading = videos === null;
 
   const topics = ["AI", "music", "interview", "branding", "mathematics", "creator economy"];
 
@@ -45,7 +35,6 @@ function SearchResults() {
 
   return (
     <div className="pb-16 animate-fade-up">
-      {/* Header */}
       <div className="px-8 pt-10 pb-6">
         <h1 className="text-3xl font-bold text-[var(--text-primary)] font-[family-name:var(--font-brand)] mb-6">
           Search
@@ -55,18 +44,17 @@ function SearchResults() {
         </div>
       </div>
 
-      {/* Results or empty state */}
       <div className="px-8">
         {query ? (
           <>
             <p className="text-sm text-[var(--text-secondary)] mb-6">
-              {results.length} result{results.length !== 1 ? "s" : ""} for &ldquo;
+              {videos.length} result{videos.length !== 1 ? "s" : ""} for &ldquo;
               <span className="text-[var(--accent)]">{query}</span>&rdquo;
             </p>
 
-            {results.length > 0 ? (
+            {videos.length > 0 ? (
               <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-5 stagger">
-                {results.map((video) => (
+                {videos.map((video) => (
                   <div key={video.id} className="animate-fade-up">
                     <VideoCard video={video} />
                   </div>
@@ -80,7 +68,6 @@ function SearchResults() {
           </>
         ) : (
           <>
-            {/* Suggested topics */}
             <div className="mb-8">
               <h2 className="text-sm font-semibold text-[var(--text-secondary)] uppercase tracking-wider mb-3">
                 Popular Topics
@@ -98,7 +85,6 @@ function SearchResults() {
               </div>
             </div>
 
-            {/* All videos grid */}
             <h2 className="text-sm font-semibold text-[var(--text-secondary)] uppercase tracking-wider mb-4">
               Browse All
             </h2>

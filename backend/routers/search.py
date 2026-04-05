@@ -1,0 +1,56 @@
+"""Semantic video search via Pixeltable .similarity()."""
+
+import logging
+from typing import Optional
+
+from fastapi import APIRouter, Query
+import pixeltable as pxt
+
+import config
+from models import SearchResponse, SearchResultItem
+from routers.videos import (
+    VIDEO_FIELDS,
+    _attach_attrs,
+    _build_video_response,
+    _load_creators_map,
+)
+
+logger = logging.getLogger(__name__)
+router = APIRouter(prefix="/api", tags=["search"])
+
+
+@router.get("/search", response_model=SearchResponse)
+def search_videos(
+    q: str = Query(..., min_length=1),
+    creator_id: Optional[str] = None,
+    limit: int = Query(10, ge=1, le=50),
+):
+    logger.info('search: q="%s", creator=%s, limit=%d', q, creator_id or "all", limit)
+    videos_t = pxt.get_table(f"{config.APP_NAMESPACE}.videos")
+    creators_map = _load_creators_map()
+
+    sim = videos_t.title.similarity(string=q)
+    query = videos_t
+    if creator_id:
+        query = query.where(videos_t.creator_id == creator_id)
+
+    cols = [getattr(videos_t, f) for f in VIDEO_FIELDS]
+    rows = list(
+        query.order_by(sim, asc=False).limit(limit).select(*cols, score=sim).collect()
+    )
+    _attach_attrs(rows, videos_t)
+
+    results = [
+        SearchResultItem(
+            video=_build_video_response(row, creators_map),
+            score=round(row.get("score", 0.0), 4),
+        )
+        for row in rows
+    ]
+
+    for r in results[:3]:
+        logger.info(
+            "  [%.3f] %s — %s", r.score, r.video.title[:40], r.video.creator.name
+        )
+
+    return SearchResponse(query=q, results=results)
