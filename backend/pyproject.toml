@@ -8,6 +8,8 @@ dependencies = [
     "fastapi",
     "uvicorn[standard]",
     "python-dotenv",
+    "python-multipart",
     "twelvelabs",
     "httpx",
+    "yt-dlp",
 ]

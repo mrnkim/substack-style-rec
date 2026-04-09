@@ -30,9 +30,9 @@ FastAPI Backend (localhost:8000)
        v
 Pixeltable
   ├── creators table (10 creators)
-  ├── videos table (25 videos + computed topic/style/tone)
-  ├── Marengo 3.0 title embedding index (25 × 512-dim vectors)
-  └── video_segments view (1,409 × 30s segments with video embeddings)
+  ├── videos table (25 videos + pxt.Video + computed topic/style/tone)
+  ├── Marengo 3.0 title embedding index (text-based, 25 × 512-dim)
+  └── Marengo 3.0 video embedding index (multimodal video content)
        |
        v
 Twelve Labs API
@@ -46,8 +46,8 @@ Twelve Labs API
 
 - **Declarative schema** -- Define tables, computed columns, and embedding indexes. Pixeltable handles the rest.
 - **Automatic pipelines** -- INSERT a video row and embeddings + attribute extraction run automatically as computed columns. No orchestration code.
-- **`.similarity()` API** -- One-line semantic search across the entire corpus: `videos.title.similarity(string="AI technology")`. Powered by pgvector under the hood.
-- **Video segmentation** -- `video_splitter(duration=30)` creates a view of 30-second segments, each with its own Marengo embedding. One line of code for 1,409 searchable video chunks.
+- **`.similarity()` API** -- One-line cross-modal search: `videos.video.similarity(string="AI technology")` finds videos by actual content, not just titles. Powered by pgvector under the hood.
+- **`pxt.Video` column** -- Store video files directly in the table. Pixeltable automatically generates Marengo 3.0 multimodal embeddings on insert — visual, audio, and speech content all in one vector.
 
 See the [Pixeltable + Twelve Labs integration docs](https://docs.pixeltable.com/sdk/latest/twelvelabs) for the full API reference.
 
@@ -97,7 +97,8 @@ TWELVELABS_INDEX_ID=69c37b6708cd679f8afbd748
 EOF
 
 uv sync                        # Install deps from lockfile
-uv run setup_pixeltable.py     # Create schema + load data from TL index
+uv run download_videos.py      # Download video files from YouTube (one-time, ~15 min)
+uv run setup_pixeltable.py     # Create schema + load data + generate video embeddings
 uv run main.py                 # FastAPI on localhost:8000
 ```
 
@@ -109,7 +110,7 @@ Add to the root `.env.local`:
 NEXT_PUBLIC_API_BASE=http://localhost:8000/api
 ```
 
-That's it. Two commands to set up the backend (`uv sync` + `uv run setup_pixeltable.py`), one to start it.
+Three commands to set up the backend: `uv sync` (install), `uv run download_videos.py` (download videos), `uv run setup_pixeltable.py` (create schema + embed). Then `uv run main.py` to start.
 
 ## Features
 
@@ -137,7 +138,8 @@ That's it. Two commands to set up the backend (`uv sync` + `uv run setup_pixelta
 │   ├── config.py                 # Environment + TL credentials
 │   ├── models.py                 # Pydantic models (camelCase JSON)
 │   ├── functions.py              # analyze_video UDF + generate_reason
-│   ├── setup_pixeltable.py       # Schema + data: tables, indexes, computed columns, TL ingest
+│   ├── download_videos.py        # Download video files from YouTube via yt-dlp
+│   ├── setup_pixeltable.py       # Schema + data: tables (pxt.Video), embedding indexes, TL ingest
 │   └── routers/                  # videos, creators, recommendations, search
 │
 ├── scripts/                      # Content curation + metadata CSVs

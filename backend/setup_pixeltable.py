@@ -4,15 +4,22 @@ Creates tables, indexes, computed columns, and loads video data from
 the Twelve Labs index. Run once — everything is idempotent.
 
 Usage:
-    uv run setup_pixeltable.py
+    uv run download_videos.py          # download 3 quick-start videos
+    uv run setup_pixeltable.py         # setup with 3 videos (fast)
+
+    uv run download_videos.py --full   # download all 25 videos
+    uv run setup_pixeltable.py --full  # setup with all 25 videos (slow)
 """
 
+import argparse
 import logging
 import re
+from pathlib import Path
 
 import httpx
 import pixeltable as pxt
 from pixeltable.functions.twelvelabs import embed
+from pixeltable.functions.video import video_splitter
 
 import config
 from functions import analyze_video
@@ -20,15 +27,20 @@ from functions import analyze_video
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
 
+QUICK_YOUTUBE_IDS = {"sO4te2QNsHY", "ntPGl8UyIq4", "QpKypvDjiPM"}
+
 marengo = embed.using(model_name="marengo3.0")
+
+VIDEO_FILES_DIR = Path(__file__).resolve().parent / "video_files"
 
 
 def strip_extension(filename: str) -> str:
     return re.sub(r"\.(mp4|webm|mkv|mov)$", "", filename, flags=re.IGNORECASE).strip()
 
 
-def setup():
-    logger.info("Setting up Pixeltable under '%s'...", config.APP_NAMESPACE)
+def setup(full: bool = False):
+    mode = "full (all videos)" if full else f"quick-start ({len(QUICK_YOUTUBE_IDS)} videos)"
+    logger.info("Setting up Pixeltable under '%s' — %s", config.APP_NAMESPACE, mode)
     pxt.create_dir(config.APP_NAMESPACE, if_exists="ignore")
 
     # -- Schema ---------------------------------------------------------------
@@ -56,14 +68,18 @@ def setup():
             "thumbnail_url": pxt.String,
             "hls_url": pxt.String,
             "upload_date": pxt.String,
+            "video": pxt.Video,
         },
         primary_key=["id"],
         if_exists="ignore",
     )
 
+    # Text-based embedding index on title (for text → video search)
     videos.add_embedding_index(
         "title", string_embed=marengo, idx_name="title_marengo", if_exists="ignore"
     )
+
+    # Attribute extraction via Twelve Labs Analyze API
     videos.add_computed_column(
         raw_attributes=analyze_video(videos.id), if_exists="ignore"
     )
@@ -76,7 +92,14 @@ def setup():
 
     logger.info("  Fetching from Twelve Labs index %s ...", config.TWELVELABS_INDEX_ID)
     tl_videos = _fetch_tl_videos()
-    logger.info("  Found %d videos", len(tl_videos))
+    logger.info("  Found %d videos in index", len(tl_videos))
+
+    if not full:
+        tl_videos = [
+            v for v in tl_videos
+            if (v.get("user_metadata") or {}).get("youtubeId") in QUICK_YOUTUBE_IDS
+        ]
+        logger.info("  Quick-start mode: using %d videos (pass --full for all)", len(tl_videos))
 
     # Creators
     seen: set[str] = set()
@@ -98,14 +121,21 @@ def setup():
         status = creators.insert(creator_rows, on_error="ignore")
         logger.info("  Creators: %d inserted", status.num_rows)
 
-    # Videos
+    # Videos — resolve local video file paths via YouTube ID
     video_rows = []
+    missing_files = []
     for tlv in tl_videos:
         meta = tlv.get("user_metadata") or {}
         sys_meta = tlv.get("system_metadata", {})
         hls = tlv.get("hls") or {}
         if not meta.get("creatorId") or not meta.get("creatorName"):
             continue
+
+        youtube_id = meta.get("youtubeId", "")
+        video_path = _resolve_video_path(youtube_id)
+        if not video_path:
+            missing_files.append(youtube_id or tlv["_id"])
+
         video_rows.append(
             {
                 "id": tlv["_id"],
@@ -116,16 +146,82 @@ def setup():
                 "thumbnail_url": (hls.get("thumbnail_urls") or [""])[0],
                 "hls_url": hls.get("video_url", ""),
                 "upload_date": meta.get("uploadDate", ""),
+                "video": video_path,
             }
         )
+
+    if missing_files:
+        logger.warning(
+            "  %d videos missing local files — run 'uv run download_videos.py' first. "
+            "IDs: %s",
+            len(missing_files),
+            ", ".join(missing_files[:5]),
+        )
+
     if video_rows:
-        logger.info("  Inserting %d videos...", len(video_rows))
-        status = videos.insert(video_rows, on_error="ignore")
+        batch_size = 3
+        total_inserted, total_errors = 0, 0
+        for i in range(0, len(video_rows), batch_size):
+            batch = video_rows[i : i + batch_size]
+            logger.info(
+                "  Inserting videos %d–%d of %d...",
+                i + 1,
+                min(i + batch_size, len(video_rows)),
+                len(video_rows),
+            )
+            status = videos.insert(batch, on_error="ignore")
+            total_inserted += status.num_rows
+            total_errors += status.num_excs
         logger.info(
-            "  Videos: %d inserted, %d errors", status.num_rows, status.num_excs
+            "  Videos: %d inserted, %d errors", total_inserted, total_errors
+        )
+
+    # -- Video chunks view (for cross-modal search) ----------------------------
+    # Splits videos into ~60s segments and embeds each with Marengo 3.0.
+    # 60s balances search quality vs setup time (~700 segments instead of ~2800).
+    # Best-effort: if ffmpeg crashes on a large file, core setup still succeeds
+    # and the app falls back to title-based similarity.
+
+    try:
+        logger.info("  Creating video_chunks view...")
+        video_chunks = pxt.create_view(
+            f"{config.APP_NAMESPACE}.video_chunks",
+            videos,
+            iterator=video_splitter(
+                video=videos.video,
+                duration=60.0,
+                min_segment_duration=10.0,
+            ),
+            if_exists="ignore",
+        )
+
+        video_chunks.add_embedding_index(
+            "video_segment",
+            embedding=marengo,
+            idx_name="segment_marengo",
+            if_exists="ignore",
+        )
+        chunk_count = video_chunks.count()
+        logger.info("  video_chunks: %d segments indexed", chunk_count)
+    except Exception as exc:
+        logger.warning(
+            "  video_chunks creation failed: %s\n"
+            "  The app will use title-based similarity as fallback.\n"
+            "  Re-run setup to retry chunk creation.",
+            exc,
         )
 
     logger.info("\nSetup complete.")
+
+
+def _resolve_video_path(youtube_id: str) -> str | None:
+    """Find the local .mp4 file for a given YouTube video ID."""
+    if not youtube_id:
+        return None
+    path = VIDEO_FILES_DIR / f"{youtube_id}.mp4"
+    if path.exists() and path.stat().st_size > 0:
+        return str(path)
+    return None
 
 
 def _fetch_tl_videos() -> list[dict]:
@@ -148,4 +244,7 @@ def _fetch_tl_videos() -> list[dict]:
 
 
 if __name__ == "__main__":
-    setup()
+    parser = argparse.ArgumentParser(description="Setup Pixeltable schema and load data")
+    parser.add_argument("--full", action="store_true", help="Load all 25 videos (slow)")
+    args = parser.parse_args()
+    setup(full=args.full)

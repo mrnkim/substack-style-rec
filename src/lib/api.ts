@@ -134,10 +134,13 @@ export async function getCreatorCatalog(
 // Search
 // ---------------------------------------------------------------------------
 
+export type SearchResult = { video: Video; score: number };
+export type SearchApiResponse = { query: string; modality?: string; results: SearchResult[] };
+
 export async function searchVideos(
   query: string,
   opts?: { creatorId?: string; limit?: number },
-): Promise<{ query: string; results: { video: Video; score: number }[] }> {
+): Promise<SearchApiResponse> {
   try {
     const params = new URLSearchParams({ q: query });
     if (opts?.creatorId) params.set("creator_id", opts.creatorId);
@@ -147,5 +150,30 @@ export async function searchVideos(
     return res.json();
   } catch {
     return { query, results: [] };
+  }
+}
+
+/**
+ * Multimodal search: upload an image, video clip, or audio file to find
+ * matching videos via Marengo 3.0 cross-modal embeddings.
+ */
+export async function searchByFile(
+  file: File,
+  opts?: { query?: string; limit?: number },
+): Promise<SearchApiResponse> {
+  try {
+    const form = new FormData();
+    form.append("file", file);
+    if (opts?.query) form.append("q", opts.query);
+    form.append("limit", String(opts?.limit ?? 10));
+
+    const res = await fetch(`${API_BASE}/search`, {
+      method: "POST",
+      body: form,
+    });
+    if (!res.ok) return { query: file.name, results: [] };
+    return res.json();
+  } catch {
+    return { query: file.name, results: [] };
   }
 }

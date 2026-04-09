@@ -1,7 +1,12 @@
-"""Video listing and detail endpoints."""
+"""Video listing and detail endpoints.
+
+Also exports shared helpers used by other routers:
+    VIDEO_FIELDS, _select_videos, _attach_attrs, _build_video_response,
+    _load_creators_map, _get_chunks_table
+"""
 
 import logging
-from typing import Optional
+import time
 
 from fastapi import APIRouter, HTTPException, Query
 import pixeltable as pxt
@@ -29,16 +34,100 @@ VIDEO_FIELDS = (
 )
 
 
-def _select_videos(videos_t, query=None):
-    """Select base video fields from the table or a filtered query."""
+def _get_chunks_table():
+    """Return the video_chunks view, or None if unavailable.
+
+    Note: if setup_pixeltable.py is still running (creating chunks),
+    queries against this view may block. Run setup to completion before
+    starting the app server.
+    """
+    try:
+        return pxt.get_table(f"{config.APP_NAMESPACE}.video_chunks")
+    except Exception:
+        return None
+
+
+ATTR_FIELDS = ("topic", "style", "tone")
+ALL_FIELDS = VIDEO_FIELDS + ATTR_FIELDS
+
+
+def _select_videos(videos_t, query=None, include_attrs: bool = True):
+    """Select video fields, including computed attrs when available."""
     q = query if query is not None else videos_t
+    if include_attrs:
+        try:
+            cols = [getattr(videos_t, f) for f in ALL_FIELDS]
+            return q.select(*cols)
+        except Exception:
+            pass
     cols = [getattr(videos_t, f) for f in VIDEO_FIELDS]
     return q.select(*cols)
 
 
+def _chunk_similarity(
+    chunks_t,
+    exclude_ids: set[str] | None = None,
+    limit: int = 10,
+    creator_id: str | None = None,
+    **sim_kwargs,
+) -> list[dict]:
+    """Query video_segment embeddings on chunks view, deduplicate to unique videos.
+
+    Accepts any similarity kwargs: string="text", image="/path", video="/path", audio="/path".
+    """
+    sim = chunks_t.video_segment.similarity(**sim_kwargs)
+    query = chunks_t
+    if creator_id:
+        query = query.where(chunks_t.creator_id == creator_id)
+
+    exclude = exclude_ids or set()
+    cols = [getattr(chunks_t, f) for f in VIDEO_FIELDS]
+    chunk_rows = list(
+        query.order_by(sim, asc=False)
+        .limit((limit + len(exclude)) * 5)
+        .select(*cols, score=sim)
+        .collect()
+    )
+
+    seen: set[str] = set()
+    deduped: list[dict] = []
+    for row in chunk_rows:
+        vid = row["id"]
+        if vid not in seen and vid not in exclude:
+            seen.add(vid)
+            deduped.append(row)
+            if len(deduped) >= limit:
+                break
+    return deduped
+
+
+def _title_similarity(
+    videos_t,
+    query_string: str,
+    exclude_ids: set[str] | None = None,
+    limit: int = 10,
+    creator_id: str | None = None,
+) -> list[dict]:
+    """Title-embedding similarity on the videos table (fallback)."""
+    sim = videos_t.title.similarity(string=query_string)
+    query = videos_t
+    if creator_id:
+        query = query.where(videos_t.creator_id == creator_id)
+
+    exclude = exclude_ids or set()
+    cols = [getattr(videos_t, f) for f in VIDEO_FIELDS]
+    rows = list(
+        query.order_by(sim, asc=False)
+        .limit(limit + len(exclude))
+        .select(*cols, score=sim)
+        .collect()
+    )
+    return [r for r in rows if r["id"] not in exclude]
+
+
 def _attach_attrs(rows: list[dict], videos_t) -> None:
-    """Attach topic/style/tone from computed columns to row dicts in-place."""
-    if not rows:
+    """Attach topic/style/tone to rows missing them (e.g. from chunk queries)."""
+    if not rows or rows[0].get("topic") is not None:
         return
     try:
         row_ids = [r["id"] for r in rows]
@@ -89,8 +178,18 @@ def _build_video_response(row: dict, creators_map: dict[str, dict]) -> VideoResp
     )
 
 
+_creators_cache: dict[str, dict] | None = None
+_creators_cache_ts: float = 0.0
+_CREATORS_CACHE_TTL = 300.0  # 5 minutes
+
+
 def _load_creators_map() -> dict[str, dict]:
-    """Load all creators keyed by id, with video_count."""
+    """Load all creators keyed by id, with video_count. Cached for 5 min."""
+    global _creators_cache, _creators_cache_ts
+    now = time.monotonic()
+    if _creators_cache is not None and (now - _creators_cache_ts) < _CREATORS_CACHE_TTL:
+        return _creators_cache
+
     creators_t = pxt.get_table(f"{config.APP_NAMESPACE}.creators")
     videos_t = pxt.get_table(f"{config.APP_NAMESPACE}.videos")
 
@@ -112,6 +211,9 @@ def _load_creators_map() -> dict[str, dict]:
         cid = r.get("creator_id", "")
         if cid in creators:
             creators[cid]["video_count"] += 1
+
+    _creators_cache = creators
+    _creators_cache_ts = now
     return creators
 
 
@@ -119,8 +221,8 @@ def _load_creators_map() -> dict[str, dict]:
 def list_videos(
     page: int = Query(1, ge=1),
     limit: int = Query(20, ge=1, le=100),
-    category: Optional[str] = None,
-    creator_id: Optional[str] = None,
+    category: str | None = None,
+    creator_id: str | None = None,
 ):
     videos_t = pxt.get_table(f"{config.APP_NAMESPACE}.videos")
     creators_map = _load_creators_map()

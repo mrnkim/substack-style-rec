@@ -17,11 +17,13 @@ from models import (
     SimilarRequest,
 )
 from routers.videos import (
-    VIDEO_FIELDS,
     _attach_attrs,
     _build_video_response,
+    _chunk_similarity,
+    _get_chunks_table,
     _load_creators_map,
     _select_videos,
+    _title_similarity,
 )
 from functions import generate_reason
 
@@ -47,20 +49,18 @@ def _similarity_candidates(
     limit: int,
     creator_id: str | None = None,
 ) -> list[dict]:
-    """Query Marengo .similarity() on title, optionally filtered by creator."""
-    sim = videos_t.title.similarity(string=reference_title)
-    query = videos_t
-    if creator_id:
-        query = query.where(videos_t.creator_id == creator_id)
+    """Query Marengo similarity — prefer video_chunks, fall back to title."""
+    chunks_t = _get_chunks_table()
 
-    cols = [getattr(videos_t, f) for f in VIDEO_FIELDS]
-    rows = list(
-        query.order_by(sim, asc=False)
-        .limit(limit + len(exclude_ids))
-        .select(*cols, score=sim)
-        .collect()
-    )
-    return [r for r in rows if r["id"] not in exclude_ids]
+    if chunks_t is not None:
+        try:
+            return _chunk_similarity(
+                chunks_t, exclude_ids, limit, creator_id, string=reference_title
+            )
+        except Exception as exc:
+            logger.warning("chunk similarity failed (%s), falling back to title", exc)
+
+    return _title_similarity(videos_t, reference_title, exclude_ids, limit, creator_id)
 
 
 def _matched_attrs(source: dict, target: dict) -> list[str]:
@@ -262,13 +262,8 @@ def similar(body: SimilarRequest):
         )
         for c in candidates[: body.limit]
     ]
-    logger.info(
-        "  → %d similar to '%s'",
-        len(recs),
-        ref.get("title", "")[:40],
-    )
-    for r in recs[:3]:
-        logger.info("    [%.3f] %s", r.score or 0, r.video.title[:50])
+    top = recs[0].video.title[:50] if recs else "none"
+    logger.info("  → %d similar, top: %s", len(recs), top)
     return RecommendationsResponse(recommendations=recs)
 
 

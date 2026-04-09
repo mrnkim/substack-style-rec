@@ -46,7 +46,7 @@ Next.js Frontend
 
 | Column | Type | Computed | Description |
 |---|---|---|---|
-| `id` | `pxt.String` | No | Unique creator ID |
+| `id` | `pxt.Required[pxt.String]` | No | Unique creator ID (primary key) |
 | `name` | `pxt.String` | No | Creator display name |
 | `avatar_url` | `pxt.String` | No | Profile image URL |
 | `description` | `pxt.String` | No | Creator bio |
@@ -55,39 +55,42 @@ Next.js Frontend
 
 | Column | Type | Computed | Description |
 |---|---|---|---|
-| `id` | `pxt.String` | No | Twelve Labs video_id |
+| `id` | `pxt.Required[pxt.String]` | No | Twelve Labs video_id (primary key) |
 | `title` | `pxt.String` | No | Video title |
 | `creator_id` | `pxt.String` | No | FK to creators |
 | `category` | `pxt.String` | No | interview / commentary / creative / educational |
 | `duration` | `pxt.Int` | No | Duration in seconds |
 | `thumbnail_url` | `pxt.String` | No | Thumbnail URL |
+| `hls_url` | `pxt.String` | No | HLS streaming URL |
 | `upload_date` | `pxt.String` | No | ISO date string |
-| `video` | `pxt.Video` | No | Video file reference |
-| `embedding` | Computed | Yes | Marengo 3.0 embedding via Twelve Labs |
-| `topic` | Computed | Yes | Free-form topic tags (Analyze API), e.g. `["AI", "robotics"]` |
+| `video` | `pxt.Video` | No | Local video file reference (for segment splitting) |
+| `raw_attributes` | Computed | Yes | JSON from Analyze API |
+| `topic` | Computed | Yes | Free-form topic tags, e.g. `["AI", "robotics"]` — extracted from `raw_attributes` |
 | `style` | Computed | Yes | Enum: `interview \| documentary \| essay \| tutorial \| conversation \| analysis \| performance \| explainer` |
 | `tone` | Computed | Yes | Enum: `serious \| casual \| playful \| contemplative \| energetic \| analytical` |
 
-### Embedding Index
+### Embedding Indexes
+
+**Title index** (on `videos` table) — used by the recommendation engine to find similar videos based on watch history titles:
 
 ```python
-videos.add_embedding_index(
-    column='video',          # or 'title' for text-based
-    embedding=marengo_embed, # Twelve Labs Marengo 3.0
-)
+videos.add_embedding_index('title', string_embed=marengo, idx_name='title_marengo')
 ```
 
-### Views (Optional Enhancement)
+### `video_chunks` View (primary search index)
+
+Full video files are too large for the Twelve Labs Embed API. Following the [recommended Pixeltable + Twelve Labs pattern](https://docs.pixeltable.com/howto/providers/working-with-twelvelabs.md), videos are split into 15-second segments and each segment is embedded with Marengo 3.0. This enables true cross-modal search (text → video, image → video, audio → video).
 
 ```python
-# Segment view for finer-grained similarity
-segments_view = pxt.create_view(
-    'video_segments',
+video_chunks = pxt.create_view(
+    'substack_rec.video_chunks',
     videos,
-    iterator=pxtf.video.video_splitter(videos.video, duration=30)  # 30s segments
+    iterator=video_splitter(video=videos.video, duration=15.0, min_segment_duration=4.0),
 )
-segments_view.add_embedding_index('video_segment', embedding=marengo_embed)
+video_chunks.add_embedding_index('video_segment', embedding=marengo, idx_name='segment_marengo')
 ```
+
+All search queries (text and file uploads) go through the `video_chunks` view for content-based matching. Results are deduplicated back to unique videos (keeping the highest-scoring segment per video).
 
 ## API Endpoints
 
@@ -190,13 +193,14 @@ Creator detail + video list.
 4. Set `score: null` and `reason: "New to you"` (no similarity basis)
 
 **Standard flow** (when `watch_history` is non-empty):
-1. Query `.similarity()` using embeddings of videos in `watch_history`
-2. Exclude already-watched videos
-3. **70/30 balancing**:
+1. Query `.similarity(string=title)` using titles of recently watched videos as seeds (last 5) — prefers `video_chunks.video_segment` for content-based matching, falls back to `videos.title` if chunks are unavailable
+2. Deduplicate chunk results to unique videos (keep highest-scoring segment per video)
+3. Exclude already-watched videos
+4. **70/30 balancing**:
    - 70% from subscribed creators (top similarity matches)
    - 30% from unsubscribed creators (discovery)
-4. **Creator diversity**: max 2 per creator
-5. Optional: slight boost for recent uploads from subscribed creators
+5. **Creator diversity**: max 2 per creator
+6. Best score wins when the same video matches multiple watch history entries
 
 **Response:**
 ```json
@@ -227,9 +231,10 @@ Recommend videos similar to a specific video (for watch page sidebar).
 ```
 
 **Logic:**
-1. Query `.similarity()` using the embedding of `video_id`
-2. Exclude already-watched videos
-3. Creator diversity: max 2 per creator
+1. Query `.similarity(string=title)` using the reference video's title — prefers `video_chunks`, falls back to `videos.title`
+2. Deduplicate chunk results to unique videos
+3. Exclude already-watched videos and the current video
+4. Creator diversity: max 2 per creator
 
 **Response:** Same schema as for-you endpoint
 
@@ -262,7 +267,7 @@ Sort a creator's catalog by relevance to user interests (not recency).
 
 ### GET `/api/search?q=`
 
-Semantic video search.
+Text-based semantic video search. Queries the `video_chunks` view for content-based matching (falls back to title embeddings if chunks are unavailable).
 
 **Query params:**
 - `q` (string, required) — search query
@@ -270,14 +275,34 @@ Semantic video search.
 - `limit` (int, default 10)
 
 **Logic:**
-1. PixelTable `.similarity(string=q)` — text-to-video cross-modal search
-2. If `creator_id` provided, filter to only that creator's videos
-3. Rank by similarity score
+1. `video_chunks.video_segment.similarity(string=q)` — searches actual video content
+2. Deduplicate results to unique videos (keep highest-scoring segment per video)
+3. If `creator_id` provided, filter to only that creator's videos
+4. Rank by similarity score
 
-**Response:**
+### POST `/api/search`
+
+Multimodal search — upload an image, video clip, or audio file to find matching videos via Marengo 3.0 cross-modal embeddings.
+
+**Form fields:**
+- `file` (file, optional) — image, video, or audio file
+- `q` (string, optional) — text query (used as fallback if file fails)
+- `creator_id` (string, optional) — scope to a single creator
+- `limit` (int, default 10)
+
+**Supported modalities:** image (jpg/png/webp/gif), video (mp4/webm/mov), audio (mp3/m4a/wav)
+
+**Logic:**
+1. Detect file modality from MIME type or extension
+2. `video_chunks.video_segment.similarity(image=path)` (or `video=`, `audio=`)
+3. Deduplicate results to unique videos
+4. Rank by similarity score
+
+**Response (both GET and POST):**
 ```json
 {
   "query": "interviews about technology policy",
+  "modality": "text",
   "results": [
     {
       "video": { "..." },
@@ -371,43 +396,50 @@ The PixelTable team needs these values (provided by us) to configure the compute
 
 ## Setup Script Pattern
 
-Example `setup_pixeltable.py` (following Creator Discovery App pattern):
+Example `setup_pixeltable.py` (following [Pixeltable + Twelve Labs docs](https://docs.pixeltable.com/howto/providers/working-with-twelvelabs.md)):
 
 ```python
 import pixeltable as pxt
+from pixeltable.functions.twelvelabs import embed
+from pixeltable.functions.video import video_splitter
 
-# Idempotent setup
+marengo = embed.using(model_name='marengo3.0')
+
 pxt.create_dir('substack_rec', if_exists='ignore')
-
-creators = pxt.create_table(
-    'substack_rec.creators',
-    {
-        'id': pxt.String,
-        'name': pxt.String,
-        'avatar_url': pxt.String,
-        'description': pxt.String,
-    },
-    if_exists='ignore'
-)
 
 videos = pxt.create_table(
     'substack_rec.videos',
     {
-        'id': pxt.String,
+        'id': pxt.Required[pxt.String],
         'title': pxt.String,
         'creator_id': pxt.String,
         'category': pxt.String,
         'duration': pxt.Int,
         'thumbnail_url': pxt.String,
+        'hls_url': pxt.String,
         'upload_date': pxt.String,
         'video': pxt.Video,
     },
-    if_exists='ignore'
+    primary_key=['id'],
+    if_exists='ignore',
 )
 
-# Add Marengo 3.0 embedding index
-videos.add_embedding_index('title', embedding=marengo_embed)
-videos.add_embedding_index('video', embedding=marengo_embed)
+# Title embedding index (used by recommendations engine)
+videos.add_embedding_index('title', string_embed=marengo, idx_name='title_marengo')
+
+# Attribute extraction via Analyze API (computed columns)
+videos.add_computed_column(raw_attributes=analyze_video(videos.id))
+videos.add_computed_column(topic=videos.raw_attributes['topic'])
+videos.add_computed_column(style=videos.raw_attributes['style'])
+videos.add_computed_column(tone=videos.raw_attributes['tone'])
+
+# Video chunks view — segment videos for content-based search
+video_chunks = pxt.create_view(
+    'substack_rec.video_chunks',
+    videos,
+    iterator=video_splitter(video=videos.video, duration=15.0, min_segment_duration=4.0),
+)
+video_chunks.add_embedding_index('video_segment', embedding=marengo, idx_name='segment_marengo')
 ```
 
 ## CORS Configuration

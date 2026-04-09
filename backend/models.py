@@ -126,4 +126,5 @@ class SearchResultItem(BaseModel):
 
 class SearchResponse(BaseModel):
     query: str
+    modality: str = "text"
     results: list[SearchResultItem]

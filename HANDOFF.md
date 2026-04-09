@@ -92,13 +92,14 @@ AI-powered video recommendation engine demo in the style of Substack TV. Uses Tw
 - [x] Creator diversity filter (max 2 per creator)
 - [x] Explainable recommendations with attribute-based reasons
 - [x] Frontend API layer updated with recommendation + search helpers
-- [ ] Video file re-download (for Phase 2b video segment embeddings)
+- [x] Video file download (`backend/download_videos.py`)
+- [x] `pxt.Video` column with Marengo 3.0 video content embeddings
+- [x] Cross-modal search: text query → video content similarity
+- [x] Recommendation queries use video content embeddings (with title fallback)
 - [ ] Session-based refinement (live personalization)
 
-### Phase 2b: Video Segment Embeddings (Future)
-- [ ] Re-download video files (`backend/download_videos.py`)
-- [ ] Add `pxt.Video` column + `video_splitter` segment view
-- [ ] Marengo 3.0 video embeddings on 30s segments
+### Phase 2b: Video Segment Embeddings (Future Enhancement)
+- [ ] `video_splitter` segment view for finer-grained 30s segment similarity
 - [ ] Upgrade recommendation queries to segment-level similarity
 
 ### Phase 3: Polish

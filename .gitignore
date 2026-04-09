@@ -45,6 +45,7 @@ next-env.d.ts
 # video downloads
 scripts/downloads/
 backend/data/
+backend/video_files/
 
 # Python
 __pycache__/

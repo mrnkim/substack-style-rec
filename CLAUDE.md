@@ -15,8 +15,13 @@ npm start            # Serve production build
 
 # Backend (run from backend/ directory)
 uv sync                                # Install deps from lockfile into .venv
-uv run setup_pixeltable.py             # Create schema + load data from TL index (idempotent)
+uv run download_videos.py              # Download 3 quick-start videos (fast)
+uv run setup_pixeltable.py             # Create schema + load 3 videos (fast)
 uv run main.py                         # Start FastAPI on :8000
+
+# Full dataset (all 25 videos — slow: downloads 13GB, chunks take 30+ min)
+uv run download_videos.py --full
+uv run setup_pixeltable.py --full
 ```
 
 No test framework is configured yet.
@@ -46,9 +51,11 @@ Pages → src/lib/api.ts → FastAPI backend (backend/) → Pixeltable → TL Em
 - **`backend/main.py`** — App entry, CORS, lifespan, router includes
 - **`backend/config.py`** — Env vars, TL API config, creator descriptions, Analyze prompt
 - **`backend/models.py`** — Pydantic models with camelCase serialization matching `types.ts`
-- **`backend/setup_pixeltable.py`** — Schema + data: creates tables, indexes, computed columns, and loads videos from TL index
-- **`backend/functions.py`** — `analyze_video` UDF (TL Generate API), `generate_reason` for rec explanations
-- **`backend/routers/`** — videos, creators, recommendations, search
+- **`backend/download_videos.py`** — Downloads video files from YouTube using yt-dlp Python API (required before setup)
+- **`backend/setup_pixeltable.py`** — Schema + data: creates tables, title embedding index, computed columns (Analyze API), loads videos from TL index. Video chunks view creation is best-effort (wrapped in try/except — ffmpeg may fail on large files)
+- **`backend/functions.py`** — `analyze_video` UDF (TL Analyze API), `generate_reason` for rec explanations
+- **`backend/routers/videos.py`** — Video endpoints + shared utilities: `_chunk_similarity`, `_title_similarity`, `_select_videos`, `_attach_attrs`, `_load_creators_map` (cached 5 min)
+- **`backend/routers/`** — creators, recommendations, search (all import shared functions from videos.py)
 
 ### Key layers
 
@@ -89,6 +96,7 @@ Pages → src/lib/api.ts → FastAPI backend (backend/) → Pixeltable → TL Em
 | `POST /api/recommendations/similar` | `backend/routers/recommendations.py` |
 | `POST /api/recommendations/creator-catalog` | `backend/routers/recommendations.py` |
 | `GET /api/search?q=` | `backend/routers/search.py` |
+| `POST /api/search` (multimodal) | `backend/routers/search.py` |
 
 ### Design system
 
@@ -118,4 +126,4 @@ CORS_ORIGINS=http://localhost:3000
 
 ## Current state
 
-Fully implemented. 25 videos from Twelve Labs index with HLS playback, 10 creators. FastAPI + Pixeltable backend provides Marengo 3.0 embedding-based recommendations (text embeddings on titles + 1,409 video segment embeddings), Analyze API attribute extraction, semantic search, explainable recommendations with 70/30 subscription/discovery balancing, and creator diversity. See `HANDOFF.md` for full status.
+Fully implemented. 25 videos from Twelve Labs index with HLS playback, 10 creators. FastAPI + Pixeltable backend uses the `video_splitter` pattern from the Pixeltable + Twelve Labs docs: videos are segmented into ~15-second chunks, each embedded with Marengo 3.0 via the `video_chunks` view. Video chunk creation is best-effort — if ffmpeg fails on large files, the app gracefully falls back to title-based similarity. All queries (search and recommendations) route through `video_chunks` when available, with `title_marengo` as fallback. Shared similarity functions (`_chunk_similarity`, `_title_similarity`) in `videos.py` eliminate code duplication across routers. `_select_videos` fetches computed attrs (topic/style/tone) in a single query pass. `_load_creators_map()` is cached with a 5-minute TTL. Also includes Analyze API attribute extraction, semantic recommendations with 70/30 subscription/discovery balancing, and creator diversity. Videos must be downloaded locally via `download_videos.py` (uses yt-dlp Python API) before running `setup_pixeltable.py`. See `HANDOFF.md` for full status.
