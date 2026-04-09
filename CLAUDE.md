@@ -15,13 +15,9 @@ npm start            # Serve production build
 
 # Backend (run from backend/ directory)
 uv sync                                # Install deps from lockfile into .venv
-uv run download_videos.py              # Download 3 quick-start videos (fast)
-uv run setup_pixeltable.py             # Create schema + load 3 videos (fast)
+uv run download_videos.py              # Download 3 quick-start videos (or --full for all 25)
+uv run setup_pixeltable.py             # Load all 25 videos, chunk only downloaded ones
 uv run main.py                         # Start FastAPI on :8000
-
-# Full dataset (all 25 videos — slow: downloads 13GB, chunks take 30+ min)
-uv run download_videos.py --full
-uv run setup_pixeltable.py --full
 ```
 
 No test framework is configured yet.
