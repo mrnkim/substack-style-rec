@@ -8,7 +8,7 @@ Pass --full to load all 25 videos.
 
 Scene detection (scene_detect_histogram) finds natural scene boundaries,
 then video_splitter splits at those points with mode='fast' (stream copy,
-no re-encoding). This produces ~10 scenes per video in seconds.
+no re-encoding). Produces ~40 scenes per video.
 
 Usage:
     uv run download_videos.py          # download 3 videos

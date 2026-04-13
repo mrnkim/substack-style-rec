@@ -6,7 +6,6 @@ Also exports shared helpers used by other routers:
 """
 
 import logging
-import shutil
 import time
 import uuid
 from pathlib import Path

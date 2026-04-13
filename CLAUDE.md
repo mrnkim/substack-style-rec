@@ -48,9 +48,9 @@ Pages → src/lib/api.ts → FastAPI backend (backend/) → Pixeltable → TL Em
 - **`backend/config.py`** — Env vars, TL API config, creator descriptions, Analyze prompt
 - **`backend/models.py`** — Pydantic models with camelCase serialization matching `types.ts`
 - **`backend/download_videos.py`** — Downloads video files from YouTube using yt-dlp Python API (required before setup)
-- **`backend/setup_pixeltable.py`** — Schema + data: creates tables, title embedding index, computed columns (Analyze API), loads videos from TL index. Video chunks view creation is best-effort (wrapped in try/except — ffmpeg may fail on large files)
+- **`backend/setup_pixeltable.py`** — Schema + data: tables, title embedding index, Analyze API attributes, scene detection (`scene_detect_histogram`), `video_scenes` view (`video_splitter` with `mode='fast'`). Best-effort try/except on scene view.
 - **`backend/functions.py`** — `analyze_video` UDF (TL Analyze API), `generate_reason` for rec explanations
-- **`backend/routers/videos.py`** — Video endpoints + shared utilities: `_chunk_similarity`, `_title_similarity`, `_select_videos`, `_attach_attrs`, `_load_creators_map` (cached 5 min)
+- **`backend/routers/videos.py`** — Video endpoints + upload (`POST /api/videos/upload`) + shared utilities: `_scene_similarity`, `_title_similarity`, `_select_videos`, `_attach_attrs`, `_load_creators_map` (cached 5 min)
 - **`backend/routers/`** — creators, recommendations, search (all import shared functions from videos.py)
 
 ### Key layers
@@ -93,6 +93,7 @@ Pages → src/lib/api.ts → FastAPI backend (backend/) → Pixeltable → TL Em
 | `POST /api/recommendations/creator-catalog` | `backend/routers/recommendations.py` |
 | `GET /api/search?q=` | `backend/routers/search.py` |
 | `POST /api/search` (multimodal) | `backend/routers/search.py` |
+| `POST /api/videos/upload` | `backend/routers/videos.py` |
 
 ### Design system
 
@@ -122,4 +123,4 @@ CORS_ORIGINS=http://localhost:3000
 
 ## Current state
 
-Fully implemented. 25 videos from Twelve Labs index with HLS playback, 10 creators. FastAPI + Pixeltable backend uses the `video_splitter` pattern from the Pixeltable + Twelve Labs docs: videos are segmented into ~15-second chunks, each embedded with Marengo 3.0 via the `video_chunks` view. Video chunk creation is best-effort — if ffmpeg fails on large files, the app gracefully falls back to title-based similarity. All queries (search and recommendations) route through `video_chunks` when available, with `title_marengo` as fallback. Shared similarity functions (`_chunk_similarity`, `_title_similarity`) in `videos.py` eliminate code duplication across routers. `_select_videos` fetches computed attrs (topic/style/tone) in a single query pass. `_load_creators_map()` is cached with a 5-minute TTL. Also includes Analyze API attribute extraction, semantic recommendations with 70/30 subscription/discovery balancing, and creator diversity. Videos must be downloaded locally via `download_videos.py` (uses yt-dlp Python API) before running `setup_pixeltable.py`. See `HANDOFF.md` for full status.
+Fully implemented. FastAPI + Pixeltable backend with scene-based video indexing. `scene_detect_histogram` finds natural scene boundaries, `video_splitter(mode='fast')` splits at those points (stream copy, no re-encoding), and Marengo 3.0 embeds each scene. All queries (search and recommendations) route through `video_scenes` when available, with `title_marengo` as fallback. Self-serve upload via `POST /api/videos/upload` (max 100MB). Shared `_scene_similarity` / `_title_similarity` in `videos.py` eliminate code duplication. `_select_videos` fetches computed attrs in a single query pass. `_load_creators_map()` cached with 5-min TTL. Quick-start: 3 videos (~4 min setup). Full: 25 videos from TL index with HLS playback, 10 creators. Dependencies: `scenedetect`, `opencv-python-headless`.

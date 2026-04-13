@@ -77,20 +77,27 @@ Next.js Frontend
 videos.add_embedding_index('title', string_embed=marengo, idx_name='title_marengo')
 ```
 
-### `video_chunks` View (primary search index)
+### `video_scenes` View (primary search index)
 
-Full video files are too large for the Twelve Labs Embed API. Following the [recommended Pixeltable + Twelve Labs pattern](https://docs.pixeltable.com/howto/providers/working-with-twelvelabs.md), videos are split into 15-second segments and each segment is embedded with Marengo 3.0. This enables true cross-modal search (text → video, image → video, audio → video).
+Uses Pixeltable's built-in `scene_detect_histogram` to find natural scene boundaries, then `video_splitter` with `mode='fast'` (stream copy, no ffmpeg re-encoding) to split at those points. Each scene segment is embedded with Marengo 3.0 for cross-modal search.
 
 ```python
-video_chunks = pxt.create_view(
-    'substack_rec.video_chunks',
-    videos,
-    iterator=video_splitter(video=videos.video, duration=15.0, min_segment_duration=4.0),
+videos.add_computed_column(
+    scenes=videos.video.scene_detect_histogram(fps=2, threshold=0.8, min_scene_len=120),
 )
-video_chunks.add_embedding_index('video_segment', embedding=marengo, idx_name='segment_marengo')
+video_scenes = pxt.create_view(
+    'substack_rec.video_scenes',
+    videos,
+    iterator=video_splitter(
+        video=videos.video,
+        segment_times=videos.scenes[1:].start_time,
+        mode='fast',
+    ),
+)
+video_scenes.add_embedding_index('video_segment', embedding=marengo, idx_name='scene_marengo')
 ```
 
-All search queries (text and file uploads) go through the `video_chunks` view for content-based matching. Results are deduplicated back to unique videos (keeping the highest-scoring segment per video).
+All search queries (text and file uploads) go through `video_scenes` for content-based matching. Results are deduplicated back to unique videos (keeping the highest-scoring scene per video).
 
 ## API Endpoints
 
@@ -193,7 +200,7 @@ Creator detail + video list.
 4. Set `score: null` and `reason: "New to you"` (no similarity basis)
 
 **Standard flow** (when `watch_history` is non-empty):
-1. Query `.similarity(string=title)` using titles of recently watched videos as seeds (last 5) — prefers `video_chunks.video_segment` for content-based matching, falls back to `videos.title` if chunks are unavailable
+1. Query `.similarity(string=title)` using titles of recently watched videos as seeds (last 5) — prefers `video_scenes.video_segment` for content-based matching, falls back to `videos.title` if scenes are unavailable
 2. Deduplicate chunk results to unique videos (keep highest-scoring segment per video)
 3. Exclude already-watched videos
 4. **70/30 balancing**:
@@ -231,7 +238,7 @@ Recommend videos similar to a specific video (for watch page sidebar).
 ```
 
 **Logic:**
-1. Query `.similarity(string=title)` using the reference video's title — prefers `video_chunks`, falls back to `videos.title`
+1. Query `.similarity(string=title)` using the reference video's title — prefers `video_scenes`, falls back to `videos.title`
 2. Deduplicate chunk results to unique videos
 3. Exclude already-watched videos and the current video
 4. Creator diversity: max 2 per creator
@@ -267,7 +274,7 @@ Sort a creator's catalog by relevance to user interests (not recency).
 
 ### GET `/api/search?q=`
 
-Text-based semantic video search. Queries the `video_chunks` view for content-based matching (falls back to title embeddings if chunks are unavailable).
+Text-based semantic video search. Queries the `video_scenes` view for content-based matching (falls back to title embeddings if scenes are unavailable).
 
 **Query params:**
 - `q` (string, required) — search query
@@ -275,7 +282,7 @@ Text-based semantic video search. Queries the `video_chunks` view for content-ba
 - `limit` (int, default 10)
 
 **Logic:**
-1. `video_chunks.video_segment.similarity(string=q)` — searches actual video content
+1. `video_scenes.video_segment.similarity(string=q)` — searches actual video content
 2. Deduplicate results to unique videos (keep highest-scoring segment per video)
 3. If `creator_id` provided, filter to only that creator's videos
 4. Rank by similarity score
@@ -294,7 +301,7 @@ Multimodal search — upload an image, video clip, or audio file to find matchin
 
 **Logic:**
 1. Detect file modality from MIME type or extension
-2. `video_chunks.video_segment.similarity(image=path)` (or `video=`, `audio=`)
+2. `video_scenes.video_segment.similarity(image=path)` (or `video=`, `audio=`)
 3. Deduplicate results to unique videos
 4. Rank by similarity score
 
@@ -309,6 +316,26 @@ Multimodal search — upload an image, video clip, or audio file to find matchin
       "score": 0.82
     }
   ]
+}
+```
+
+### POST `/api/videos/upload`
+
+Self-serve video upload. Pixeltable auto-runs scene detection, embedding, and attribute extraction on the uploaded file.
+
+**Form fields:**
+- `file` (file, required) — mp4/webm/mov video file
+- `title` (string, required) — video title
+- `category` (string, default "interview") — interview / commentary / creative / educational
+
+**Limits:** `MAX_UPLOAD_SIZE_MB` (default 100), `MAX_UPLOAD_DURATION_SEC` (default 300)
+
+**Response:**
+```json
+{
+  "id": "upload_a1b2c3d4e5f6",
+  "title": "My Video",
+  "status": "processing"
 }
 ```
 
@@ -433,13 +460,20 @@ videos.add_computed_column(topic=videos.raw_attributes['topic'])
 videos.add_computed_column(style=videos.raw_attributes['style'])
 videos.add_computed_column(tone=videos.raw_attributes['tone'])
 
-# Video chunks view — segment videos for content-based search
-video_chunks = pxt.create_view(
-    'substack_rec.video_chunks',
-    videos,
-    iterator=video_splitter(video=videos.video, duration=15.0, min_segment_duration=4.0),
+# Scene detection + scene-based view for content search
+videos.add_computed_column(
+    scenes=videos.video.scene_detect_histogram(fps=2, threshold=0.8, min_scene_len=120),
 )
-video_chunks.add_embedding_index('video_segment', embedding=marengo, idx_name='segment_marengo')
+video_scenes = pxt.create_view(
+    'substack_rec.video_scenes',
+    videos,
+    iterator=video_splitter(
+        video=videos.video,
+        segment_times=videos.scenes[1:].start_time,
+        mode='fast',
+    ),
+)
+video_scenes.add_embedding_index('video_segment', embedding=marengo, idx_name='scene_marengo')
 ```
 
 ## CORS Configuration
