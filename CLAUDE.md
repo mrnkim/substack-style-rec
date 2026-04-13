@@ -70,6 +70,7 @@ Pages → src/lib/api.ts → FastAPI backend (backend/) → Pixeltable → TL Em
 | `/watch/[id]` | `src/app/watch/[id]/page.tsx` |
 | `/explore` | `src/app/explore/page.tsx` |
 | `/search` | `src/app/search/page.tsx` |
+| `/upload` | `src/app/upload/page.tsx` |
 
 ### API Routes (Next.js — fallback)
 

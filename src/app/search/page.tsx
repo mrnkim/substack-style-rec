@@ -343,7 +343,7 @@ function SearchResults() {
               </h3>
               <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
                 Upload an image, short video clip, or audio file to find videos with matching content.
-                Powered by Twelve Labs Marengo 3.0 — all modalities share the same embedding space.
+                Powered by Twelve Labs Marengo 3.0 + Pixeltable scene detection — all modalities share the same embedding space.
               </p>
             </div>
 

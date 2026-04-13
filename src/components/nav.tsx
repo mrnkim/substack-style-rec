@@ -10,6 +10,7 @@ export function Nav() {
     { href: "/", label: "Home" },
     { href: "/explore", label: "Explore" },
     { href: "/search", label: "Search" },
+    { href: "/upload", label: "Upload" },
   ];
 
   return (
@@ -50,7 +51,7 @@ export function Nav() {
       <div className="ml-auto flex items-center gap-3">
         <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-[var(--accent-muted)] border border-[var(--border-accent)]">
           <div className="w-1.5 h-1.5 rounded-full bg-[var(--accent)] animate-pulse" />
-          <span className="text-xs font-medium text-[var(--accent)]">Powered by TwelveLabs</span>
+          <span className="text-xs font-medium text-[var(--accent)]">Powered by TwelveLabs + Pixeltable</span>
         </div>
       </div>
     </nav>

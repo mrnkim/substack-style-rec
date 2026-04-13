@@ -153,6 +153,33 @@ export async function searchVideos(
   }
 }
 
+export type UploadResponse = { id: string; title: string; status: string };
+
+export async function uploadVideo(
+  file: File,
+  title: string,
+  category: string = "interview",
+): Promise<UploadResponse | null> {
+  try {
+    const form = new FormData();
+    form.append("file", file);
+    form.append("title", title);
+    form.append("category", category);
+
+    const res = await fetch(`${API_BASE}/videos/upload`, {
+      method: "POST",
+      body: form,
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || `Upload failed (${res.status})`);
+    }
+    return res.json();
+  } catch (e) {
+    throw e;
+  }
+}
+
 /**
  * Multimodal search: upload an image, video clip, or audio file to find
  * matching videos via Marengo 3.0 cross-modal embeddings.
