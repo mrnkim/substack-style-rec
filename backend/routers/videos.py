@@ -6,6 +6,7 @@ Also exports shared helpers used by other routers:
 """
 
 import logging
+import subprocess
 import time
 import uuid
 from pathlib import Path
@@ -298,6 +299,13 @@ async def upload_video(
 
     logger.info("upload: %s (%s, %.1f MB)", title[:40], video_id, size / 1e6)
 
+    duration = _probe_duration(dest)
+    thumb_path = _extract_thumbnail(dest, video_id)
+    thumb_url = f"/api/files/{video_id}_thumb.jpg" if thumb_path else ""
+    video_url = f"/api/files/{video_id}.mp4"
+
+    from datetime import date
+
     videos_t = pxt.get_table(f"{config.APP_NAMESPACE}.videos")
     videos_t.insert(
         [{
@@ -305,10 +313,10 @@ async def upload_video(
             "title": title,
             "creator_id": "user_upload",
             "category": category,
-            "duration": 0,
-            "thumbnail_url": "",
-            "hls_url": "",
-            "upload_date": "",
+            "duration": duration,
+            "thumbnail_url": thumb_url,
+            "hls_url": video_url,
+            "upload_date": date.today().isoformat(),
             "video": str(dest),
         }],
         on_error="ignore",
@@ -318,3 +326,32 @@ async def upload_video(
     _creators_cache = None
 
     return UploadVideoResponse(id=video_id, title=title, status="processing")
+
+
+def _probe_duration(path: Path) -> int:
+    """Get video duration in seconds via ffprobe."""
+    try:
+        result = subprocess.run(
+            ["ffprobe", "-v", "error", "-show_entries", "format=duration",
+             "-of", "default=noprint_wrappers=1:nokey=1", str(path)],
+            capture_output=True, text=True, timeout=10,
+        )
+        return round(float(result.stdout.strip()))
+    except Exception:
+        return 0
+
+
+def _extract_thumbnail(video_path: Path, video_id: str) -> Path | None:
+    """Extract a thumbnail frame at 2 seconds into the video."""
+    thumb_path = VIDEO_FILES_DIR / f"{video_id}_thumb.jpg"
+    try:
+        subprocess.run(
+            ["ffmpeg", "-y", "-ss", "2", "-i", str(video_path),
+             "-vframes", "1", "-q:v", "3", str(thumb_path)],
+            capture_output=True, timeout=15,
+        )
+        if thumb_path.exists() and thumb_path.stat().st_size > 0:
+            return thumb_path
+    except Exception:
+        pass
+    return None
