@@ -19,9 +19,9 @@ from models import (
 from routers.videos import (
     _attach_attrs,
     _build_video_response,
-    _chunk_similarity,
-    _get_chunks_table,
+    _get_scenes_table,
     _load_creators_map,
+    _scene_similarity,
     _select_videos,
     _title_similarity,
 )
@@ -49,18 +49,18 @@ def _similarity_candidates(
     limit: int,
     creator_id: str | None = None,
 ) -> list[dict]:
-    """Query Marengo similarity — prefer video_chunks, fall back to title."""
-    chunks_t = _get_chunks_table()
+    """Query Marengo similarity — prefer video_scenes, fall back to title."""
+    scenes_t = _get_scenes_table()
 
-    if chunks_t is not None:
+    if scenes_t is not None:
         try:
-            rows = _chunk_similarity(
-                chunks_t, exclude_ids, limit, creator_id, string=reference_title
+            rows = _scene_similarity(
+                scenes_t, exclude_ids, limit, creator_id, string=reference_title
             )
             if rows:
                 return rows
         except Exception as exc:
-            logger.warning("chunk similarity failed (%s), falling back to title", exc)
+            logger.warning("scene similarity failed (%s), falling back to title", exc)
 
     return _title_similarity(videos_t, reference_title, exclude_ids, limit, creator_id)
 

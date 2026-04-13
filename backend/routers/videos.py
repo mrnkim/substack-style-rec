@@ -2,22 +2,29 @@
 
 Also exports shared helpers used by other routers:
     VIDEO_FIELDS, _select_videos, _attach_attrs, _build_video_response,
-    _load_creators_map, _get_chunks_table
+    _load_creators_map, _get_scenes_table, _scene_similarity, _title_similarity
 """
 
 import logging
+import shutil
 import time
+import uuid
+from pathlib import Path
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile
 import pixeltable as pxt
 
 import config
 from models import (
     CreatorResponse,
     PaginatedVideosResponse,
+    UploadVideoResponse,
     VideoAttributesResponse,
     VideoResponse,
 )
+
+VIDEO_FILES_DIR = Path(__file__).resolve().parent.parent / "video_files"
+ALLOWED_VIDEO_TYPES = {"video/mp4", "video/webm", "video/quicktime"}
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api", tags=["videos"])
@@ -34,15 +41,10 @@ VIDEO_FIELDS = (
 )
 
 
-def _get_chunks_table():
-    """Return the video_chunks view, or None if unavailable.
-
-    Note: if setup_pixeltable.py is still running (creating chunks),
-    queries against this view may block. Run setup to completion before
-    starting the app server.
-    """
+def _get_scenes_table():
+    """Return the video_scenes view, or None if unavailable."""
     try:
-        return pxt.get_table(f"{config.APP_NAMESPACE}.video_chunks")
+        return pxt.get_table(f"{config.APP_NAMESPACE}.video_scenes")
     except Exception:
         return None
 
@@ -64,25 +66,25 @@ def _select_videos(videos_t, query=None, include_attrs: bool = True):
     return q.select(*cols)
 
 
-def _chunk_similarity(
-    chunks_t,
+def _scene_similarity(
+    scenes_t,
     exclude_ids: set[str] | None = None,
     limit: int = 10,
     creator_id: str | None = None,
     **sim_kwargs,
 ) -> list[dict]:
-    """Query video_segment embeddings on chunks view, deduplicate to unique videos.
+    """Query video_segment embeddings on scenes view, deduplicate to unique videos.
 
     Accepts any similarity kwargs: string="text", image="/path", video="/path", audio="/path".
     """
-    sim = chunks_t.video_segment.similarity(**sim_kwargs)
-    query = chunks_t
+    sim = scenes_t.video_segment.similarity(**sim_kwargs)
+    query = scenes_t
     if creator_id:
-        query = query.where(chunks_t.creator_id == creator_id)
+        query = query.where(scenes_t.creator_id == creator_id)
 
     exclude = exclude_ids or set()
-    cols = [getattr(chunks_t, f) for f in VIDEO_FIELDS]
-    chunk_rows = list(
+    cols = [getattr(scenes_t, f) for f in VIDEO_FIELDS]
+    scene_rows = list(
         query.order_by(sim, asc=False)
         .limit((limit + len(exclude)) * 5)
         .select(*cols, score=sim)
@@ -91,7 +93,7 @@ def _chunk_similarity(
 
     seen: set[str] = set()
     deduped: list[dict] = []
-    for row in chunk_rows:
+    for row in scene_rows:
         vid = row["id"]
         if vid not in seen and vid not in exclude:
             seen.add(vid)
@@ -259,3 +261,61 @@ def get_video(video_id: str):
 
     _attach_attrs(rows, videos_t)
     return _build_video_response(rows[0], _load_creators_map())
+
+
+# ── Self-serve video upload ─────────────────────────────────────────────────
+
+
+@router.post("/videos/upload", response_model=UploadVideoResponse)
+async def upload_video(
+    file: UploadFile = File(...),
+    title: str = Form(...),
+    category: str = Form("interview"),
+):
+    """Upload a video file. Pixeltable auto-runs scene detection, embedding,
+    and attribute extraction. File size limited by MAX_UPLOAD_SIZE_MB."""
+    content_type = file.content_type or ""
+    if content_type not in ALLOWED_VIDEO_TYPES:
+        ext = Path(file.filename or "").suffix.lower()
+        if ext not in {".mp4", ".webm", ".mov"}:
+            raise HTTPException(status_code=400, detail="Only mp4/webm/mov files accepted")
+
+    max_bytes = config.MAX_UPLOAD_SIZE_MB * 1024 * 1024
+    VIDEO_FILES_DIR.mkdir(parents=True, exist_ok=True)
+    video_id = f"upload_{uuid.uuid4().hex[:12]}"
+    dest = VIDEO_FILES_DIR / f"{video_id}.mp4"
+
+    size = 0
+    with dest.open("wb") as f:
+        while chunk := await file.read(1024 * 1024):
+            size += len(chunk)
+            if size > max_bytes:
+                dest.unlink(missing_ok=True)
+                raise HTTPException(
+                    status_code=413,
+                    detail=f"File too large. Max {config.MAX_UPLOAD_SIZE_MB}MB.",
+                )
+            f.write(chunk)
+
+    logger.info("upload: %s (%s, %.1f MB)", title[:40], video_id, size / 1e6)
+
+    videos_t = pxt.get_table(f"{config.APP_NAMESPACE}.videos")
+    videos_t.insert(
+        [{
+            "id": video_id,
+            "title": title,
+            "creator_id": "user_upload",
+            "category": category,
+            "duration": 0,
+            "thumbnail_url": "",
+            "hls_url": "",
+            "upload_date": "",
+            "video": str(dest),
+        }],
+        on_error="ignore",
+    )
+
+    global _creators_cache
+    _creators_cache = None
+
+    return UploadVideoResponse(id=video_id, title=title, status="processing")

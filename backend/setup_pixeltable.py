@@ -3,15 +3,19 @@
 Creates tables, indexes, computed columns, and loads video data from
 the Twelve Labs index. Run once — everything is idempotent.
 
-By default loads 3 quick-start videos (fast: ~2 min).
-Pass --full to load all 25 videos (~10 min).
+By default loads 3 quick-start videos (fast).
+Pass --full to load all 25 videos.
+
+Scene detection (scene_detect_histogram) finds natural scene boundaries,
+then video_splitter splits at those points with mode='fast' (stream copy,
+no re-encoding). This produces ~10 scenes per video in seconds.
 
 Usage:
     uv run download_videos.py          # download 3 videos
-    uv run setup_pixeltable.py         # insert 3 videos + chunk them
+    uv run setup_pixeltable.py         # insert 3 videos + detect scenes + embed
 
     uv run download_videos.py --full   # download all 25 videos (13GB)
-    uv run setup_pixeltable.py --full  # insert all 25 + chunk downloaded ones
+    uv run setup_pixeltable.py --full  # insert all 25 + detect scenes + embed
 """
 
 import argparse
@@ -179,38 +183,45 @@ def setup(full: bool = False):
             "  Videos: %d inserted, %d errors", total_inserted, total_errors
         )
 
-    # -- Video chunks view (for cross-modal search) ----------------------------
-    # Splits videos into ~60s segments and embeds each with Marengo 3.0.
-    # 60s balances search quality vs setup time (~700 segments instead of ~2800).
-    # Best-effort: if ffmpeg crashes on a large file, core setup still succeeds
-    # and the app falls back to title-based similarity.
+    # -- Scene detection + scene-based view (for cross-modal search) -----------
+    # Uses Pixeltable's built-in scene_detect_histogram to find natural scene
+    # boundaries, then video_splitter with mode='fast' (stream copy, no
+    # re-encoding) to split at those points. ~10 scenes per video in seconds.
+
+    videos.add_computed_column(
+        scenes=videos.video.scene_detect_histogram(
+            fps=10, threshold=0.6, min_scene_len=100,
+        ),
+        if_exists="ignore",
+    )
+    logger.info("  Scene detection column ready")
 
     try:
-        logger.info("  Creating video_chunks view...")
-        video_chunks = pxt.create_view(
-            f"{config.APP_NAMESPACE}.video_chunks",
+        logger.info("  Creating video_scenes view...")
+        video_scenes = pxt.create_view(
+            f"{config.APP_NAMESPACE}.video_scenes",
             videos,
             iterator=video_splitter(
                 video=videos.video,
-                duration=60.0,
-                min_segment_duration=10.0,
+                segment_times=videos.scenes[1:].start_time,
+                mode="fast",
             ),
             if_exists="ignore",
         )
 
-        video_chunks.add_embedding_index(
+        video_scenes.add_embedding_index(
             "video_segment",
             embedding=marengo,
-            idx_name="segment_marengo",
+            idx_name="scene_marengo",
             if_exists="ignore",
         )
-        chunk_count = video_chunks.count()
-        logger.info("  video_chunks: %d segments indexed", chunk_count)
+        scene_count = video_scenes.count()
+        logger.info("  video_scenes: %d scenes indexed", scene_count)
     except Exception as exc:
         logger.warning(
-            "  video_chunks creation failed: %s\n"
+            "  video_scenes creation failed: %s\n"
             "  The app will use title-based similarity as fallback.\n"
-            "  Re-run setup to retry chunk creation.",
+            "  Re-run setup to retry.",
             exc,
         )
 

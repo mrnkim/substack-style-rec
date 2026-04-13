@@ -1,12 +1,8 @@
 """Semantic video search via Pixeltable .similarity().
 
-All queries go through the video_chunks view (video_splitter + Marengo
-3.0 segment embeddings) for true content-based search. This avoids the
-title-only search problem where short/generic titles like "Yikes."
-dominate results for any vague query.
-
-Fallback: if video_chunks is unavailable, text queries use the title
-embedding index on the videos table.
+Queries go through the video_scenes view (scene-detect + Marengo 3.0
+segment embeddings) for content-based search. Falls back to title
+embeddings when scenes are unavailable.
 """
 
 import logging
@@ -22,9 +18,9 @@ from models import SearchResponse, SearchResultItem
 from routers.videos import (
     _attach_attrs,
     _build_video_response,
-    _chunk_similarity,
-    _get_chunks_table,
+    _get_scenes_table,
     _load_creators_map,
+    _scene_similarity,
     _title_similarity,
 )
 
@@ -70,23 +66,23 @@ def _format_results(rows, query_label, modality="text"):
     return SearchResponse(query=query_label, modality=modality, results=results)
 
 
-def _search(videos_t, chunks_t, q, creator_id, limit, **file_kwargs):
-    """Unified search: prefer chunks (content-based), fall back to title."""
+def _search(videos_t, scenes_t, q, creator_id, limit, **file_kwargs):
+    """Unified search: prefer scenes (content-based), fall back to title."""
     is_file_query = bool(file_kwargs)
 
-    if chunks_t is not None:
+    if scenes_t is not None:
         kwargs = file_kwargs if file_kwargs else {"string": q}
         try:
-            rows = _chunk_similarity(chunks_t, None, limit, creator_id, **kwargs)
+            rows = _scene_similarity(scenes_t, None, limit, creator_id, **kwargs)
             if rows:
                 _attach_attrs(rows, videos_t)
                 return rows
         except Exception as exc:
-            logger.warning("chunk search failed (%s), falling back to title", exc)
+            logger.warning("scene search failed (%s), falling back to title", exc)
 
     if is_file_query:
         logger.warning(
-            "  File search requires video_chunks view (not created yet). "
+            "  File search requires video_scenes view (not created yet). "
             "Run 'uv run download_videos.py && uv run setup_pixeltable.py' to enable."
         )
         return None
@@ -110,8 +106,8 @@ def search_videos(
 ):
     logger.info("search: text q=%r, limit=%d", q, limit)
     videos_t = pxt.get_table(f"{config.APP_NAMESPACE}.videos")
-    chunks_t = _get_chunks_table()
-    rows = _search(videos_t, chunks_t, q, creator_id, limit)
+    scenes_t = _get_scenes_table()
+    rows = _search(videos_t, scenes_t, q, creator_id, limit)
     return _format_results(rows, q)
 
 
@@ -125,13 +121,13 @@ async def search_multimodal(
     creator_id: str | None = Form(None),
     limit: int = Form(10),
 ):
-    """Cross-modal search: text, image, video, or audio → video results.
+    """Cross-modal search: text, image, video, or audio -> video results.
 
     All modalities search against video_segment embeddings on the
-    video_chunks view for true content-based similarity.
+    video_scenes view for content-based similarity.
     """
     videos_t = pxt.get_table(f"{config.APP_NAMESPACE}.videos")
-    chunks_t = _get_chunks_table()
+    scenes_t = _get_scenes_table()
     tmp_path: Path | None = None
 
     try:
@@ -151,7 +147,7 @@ async def search_multimodal(
             if not modality:
                 logger.warning("Unknown file type: %s (%s)", file.filename, content_type)
                 if q:
-                    rows = _search(videos_t, chunks_t, q, creator_id, limit)
+                    rows = _search(videos_t, scenes_t, q, creator_id, limit)
                     return _format_results(rows, q)
                 return SearchResponse(query="unknown file type", results=[])
 
@@ -165,19 +161,19 @@ async def search_multimodal(
             logger.info("search: %s file=%r, limit=%d", modality, file.filename, limit)
 
             file_kwargs = {modality: str(tmp_path)}
-            rows = _search(videos_t, chunks_t, q, creator_id, limit, **file_kwargs)
+            rows = _search(videos_t, scenes_t, q, creator_id, limit, **file_kwargs)
             if rows is None:
                 return SearchResponse(
                     query=f"[{modality}] {file.filename}",
                     modality=modality,
                     results=[],
-                    message="File search requires video chunks. Run download_videos.py + setup_pixeltable.py first.",
+                    message="File search requires video scenes. Run download_videos.py + setup_pixeltable.py first.",
                 )
             return _format_results(rows, label, modality=modality)
 
         elif q:
             logger.info("search: text q=%r, limit=%d", q, limit)
-            rows = _search(videos_t, chunks_t, q, creator_id, limit)
+            rows = _search(videos_t, scenes_t, q, creator_id, limit)
             return _format_results(rows, q)
 
         else:
