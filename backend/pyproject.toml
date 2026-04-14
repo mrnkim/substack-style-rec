@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "FastAPI + Pixeltable backend for Substack TV-style video recommendations"
 requires-python = ">=3.10"
 dependencies = [
-    "pixeltable>=0.5.24",
+    "pixeltable>=0.5.27",
     "fastapi",
     "uvicorn[standard]",
     "python-dotenv",
