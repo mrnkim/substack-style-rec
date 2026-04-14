@@ -319,26 +319,6 @@ Multimodal search — upload an image, video clip, or audio file to find matchin
 }
 ```
 
-### POST `/api/videos/upload`
-
-Self-serve video upload. Pixeltable auto-runs scene detection, embedding, and attribute extraction on the uploaded file.
-
-**Form fields:**
-- `file` (file, required) — mp4/webm/mov video file
-- `title` (string, required) — video title
-- `category` (string, default "interview") — interview / commentary / creative / educational
-
-**Limits:** `MAX_UPLOAD_SIZE_MB` (default 100), `MAX_UPLOAD_DURATION_SEC` (default 300)
-
-**Response:**
-```json
-{
-  "id": "upload_a1b2c3d4e5f6",
-  "title": "My Video",
-  "status": "processing"
-}
-```
-
 ## Recommendation Explanation Generation
 
 Logic for generating natural-language recommendation reasons:

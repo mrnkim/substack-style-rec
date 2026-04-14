@@ -1,16 +1,12 @@
 import config  # load .env before any other imports that read env vars
 import logging
 from contextlib import asynccontextmanager
-from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
 
 import pixeltable as pxt
 from routers import videos, creators, recommendations, search
-
-VIDEO_FILES_DIR = Path(__file__).resolve().parent / "video_files"
 
 logging.basicConfig(
     level=logging.INFO,
@@ -58,9 +54,6 @@ app.include_router(videos.router)
 app.include_router(creators.router)
 app.include_router(recommendations.router)
 app.include_router(search.router)
-
-VIDEO_FILES_DIR.mkdir(parents=True, exist_ok=True)
-app.mount("/api/files", StaticFiles(directory=str(VIDEO_FILES_DIR)), name="uploaded-files")
 
 
 if __name__ == "__main__":

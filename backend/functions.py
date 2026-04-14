@@ -37,11 +37,7 @@ VALID_TONES = frozenset(
 
 @pxt.udf
 def analyze_video(video_id: str) -> dict:
-    """Call Twelve Labs Analyze API to extract topic, style, and tone.
-    Skips user uploads (no TL index entry) and returns defaults."""
-    if video_id.startswith("upload_"):
-        return {"topic": [], "style": "interview", "tone": "serious"}
-
+    """Call Twelve Labs Analyze API to extract topic, style, and tone."""
     url = f"{config.TWELVELABS_BASE_URL}/analyze"
     headers = {
         "x-api-key": config.TWELVELABS_API_KEY,

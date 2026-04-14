@@ -93,9 +93,6 @@ def setup(full: bool = False):
     videos.add_computed_column(topic=videos.raw_attributes["topic"], if_exists="ignore")
     videos.add_computed_column(style=videos.raw_attributes["style"], if_exists="ignore")
     videos.add_computed_column(tone=videos.raw_attributes["tone"], if_exists="ignore")
-    videos.add_computed_column(
-        keyframe=videos.video.extract_frame(timestamp=2.0), if_exists="ignore"
-    )
     logger.info("  Schema ready")
 
     # -- Data from Twelve Labs index ------------------------------------------

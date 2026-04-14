@@ -14,9 +14,6 @@ TWELVELABS_API_KEY = os.getenv("TWELVELABS_API_KEY", "")
 TWELVELABS_INDEX_ID = os.getenv("TWELVELABS_INDEX_ID", "")
 TWELVELABS_BASE_URL = "https://api.twelvelabs.io/v1.3"
 
-MAX_UPLOAD_SIZE_MB = int(os.getenv("MAX_UPLOAD_SIZE_MB", "100"))
-MAX_UPLOAD_DURATION_SEC = int(os.getenv("MAX_UPLOAD_DURATION_SEC", "300"))
-
 CORS_ORIGINS: list[str] = [
     origin.strip()
     for origin in os.getenv(

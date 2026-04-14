@@ -7,23 +7,17 @@ Also exports shared helpers used by other routers:
 
 import logging
 import time
-import uuid
-from pathlib import Path
 
-from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile
+from fastapi import APIRouter, HTTPException, Query
 import pixeltable as pxt
 
 import config
 from models import (
     CreatorResponse,
     PaginatedVideosResponse,
-    UploadVideoResponse,
     VideoAttributesResponse,
     VideoResponse,
 )
-
-VIDEO_FILES_DIR = Path(__file__).resolve().parent.parent / "video_files"
-ALLOWED_VIDEO_TYPES = {"video/mp4", "video/webm", "video/quicktime"}
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api", tags=["videos"])
@@ -160,13 +154,8 @@ def _build_video_response(row: dict, creators_map: dict[str, dict]) -> VideoResp
             tone=row.get("tone") or "",
         )
 
-    thumb = row.get("thumbnail_url", "")
-    vid_id = row["id"]
-    if not thumb and vid_id.startswith("upload_"):
-        thumb = f"/api/videos/{vid_id}/keyframe"
-
     return VideoResponse(
-        id=vid_id,
+        id=row["id"],
         title=row.get("title", ""),
         creator=CreatorResponse(
             id=cid,
@@ -177,7 +166,7 @@ def _build_video_response(row: dict, creators_map: dict[str, dict]) -> VideoResp
         ),
         category=row.get("category", "interview"),
         duration=row.get("duration", 0),
-        thumbnail_url=thumb,
+        thumbnail_url=row.get("thumbnail_url", ""),
         hls_url=row.get("hls_url"),
         upload_date=row.get("upload_date", ""),
         attributes=attributes,
@@ -265,90 +254,3 @@ def get_video(video_id: str):
 
     _attach_attrs(rows, videos_t)
     return _build_video_response(rows[0], _load_creators_map())
-
-
-@router.get("/videos/{video_id}/keyframe")
-def get_keyframe(video_id: str):
-    """Serve the auto-extracted keyframe (frame at 2s) as a JPEG image."""
-    from fastapi.responses import Response
-
-    videos_t = pxt.get_table(f"{config.APP_NAMESPACE}.videos")
-    try:
-        rows = list(
-            videos_t.where(videos_t.id == video_id)
-            .select(videos_t.keyframe)
-            .collect()
-        )
-    except Exception:
-        raise HTTPException(status_code=404, detail="Keyframe not available")
-
-    if not rows or rows[0].get("keyframe") is None:
-        raise HTTPException(status_code=404, detail="Keyframe not available")
-
-    import io
-    img = rows[0]["keyframe"]
-    buf = io.BytesIO()
-    img.save(buf, format="JPEG", quality=80)
-    return Response(content=buf.getvalue(), media_type="image/jpeg")
-
-
-# ── Self-serve video upload ─────────────────────────────────────────────────
-
-
-@router.post("/videos/upload", response_model=UploadVideoResponse)
-async def upload_video(
-    file: UploadFile = File(...),
-    title: str = Form(...),
-    category: str = Form("interview"),
-):
-    """Upload a video file. Pixeltable auto-runs scene detection, embedding,
-    and attribute extraction. File size limited by MAX_UPLOAD_SIZE_MB."""
-    content_type = file.content_type or ""
-    if content_type not in ALLOWED_VIDEO_TYPES:
-        ext = Path(file.filename or "").suffix.lower()
-        if ext not in {".mp4", ".webm", ".mov"}:
-            raise HTTPException(status_code=400, detail="Only mp4/webm/mov files accepted")
-
-    max_bytes = config.MAX_UPLOAD_SIZE_MB * 1024 * 1024
-    VIDEO_FILES_DIR.mkdir(parents=True, exist_ok=True)
-    video_id = f"upload_{uuid.uuid4().hex[:12]}"
-    dest = VIDEO_FILES_DIR / f"{video_id}.mp4"
-
-    size = 0
-    with dest.open("wb") as f:
-        while chunk := await file.read(1024 * 1024):
-            size += len(chunk)
-            if size > max_bytes:
-                dest.unlink(missing_ok=True)
-                raise HTTPException(
-                    status_code=413,
-                    detail=f"File too large. Max {config.MAX_UPLOAD_SIZE_MB}MB.",
-                )
-            f.write(chunk)
-
-    logger.info("upload: %s (%s, %.1f MB)", title[:40], video_id, size / 1e6)
-
-    from datetime import date
-
-    video_url = f"/api/files/{video_id}.mp4"
-
-    videos_t = pxt.get_table(f"{config.APP_NAMESPACE}.videos")
-    videos_t.insert(
-        [{
-            "id": video_id,
-            "title": title,
-            "creator_id": "user_upload",
-            "category": category,
-            "duration": 0,
-            "thumbnail_url": "",
-            "hls_url": video_url,
-            "upload_date": date.today().isoformat(),
-            "video": str(dest),
-        }],
-        on_error="ignore",
-    )
-
-    global _creators_cache
-    _creators_cache = None
-
-    return UploadVideoResponse(id=video_id, title=title, status="processing")

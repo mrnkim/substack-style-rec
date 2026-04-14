@@ -50,7 +50,7 @@ Pages → src/lib/api.ts → FastAPI backend (backend/) → Pixeltable → TL Em
 - **`backend/download_videos.py`** — Downloads video files from YouTube using yt-dlp Python API (required before setup)
 - **`backend/setup_pixeltable.py`** — Schema + data: tables, title embedding index, Analyze API attributes, scene detection (`scene_detect_histogram`), `video_scenes` view (`video_splitter` with `mode='fast'`). Best-effort try/except on scene view.
 - **`backend/functions.py`** — `analyze_video` UDF (TL Analyze API), `generate_reason` for rec explanations
-- **`backend/routers/videos.py`** — Video endpoints + upload (`POST /api/videos/upload`) + shared utilities: `_scene_similarity`, `_title_similarity`, `_select_videos`, `_attach_attrs`, `_load_creators_map` (cached 5 min)
+- **`backend/routers/videos.py`** — Video endpoints + shared utilities: `_scene_similarity`, `_title_similarity`, `_select_videos`, `_attach_attrs`, `_load_creators_map` (cached 5 min)
 - **`backend/routers/`** — creators, recommendations, search (all import shared functions from videos.py)
 
 ### Key layers
@@ -70,7 +70,6 @@ Pages → src/lib/api.ts → FastAPI backend (backend/) → Pixeltable → TL Em
 | `/watch/[id]` | `src/app/watch/[id]/page.tsx` |
 | `/explore` | `src/app/explore/page.tsx` |
 | `/search` | `src/app/search/page.tsx` |
-| `/upload` | `src/app/upload/page.tsx` |
 
 ### API Routes (Next.js — fallback)
 
@@ -94,7 +93,6 @@ Pages → src/lib/api.ts → FastAPI backend (backend/) → Pixeltable → TL Em
 | `POST /api/recommendations/creator-catalog` | `backend/routers/recommendations.py` |
 | `GET /api/search?q=` | `backend/routers/search.py` |
 | `POST /api/search` (multimodal) | `backend/routers/search.py` |
-| `POST /api/videos/upload` | `backend/routers/videos.py` |
 
 ### Design system
 
@@ -124,4 +122,4 @@ CORS_ORIGINS=http://localhost:3000
 
 ## Current state
 
-Fully implemented. FastAPI + Pixeltable backend with scene-based video indexing. `scene_detect_histogram` finds natural scene boundaries, `video_splitter(mode='fast')` splits at those points (stream copy, no re-encoding), and Marengo 3.0 embeds each scene. All queries (search and recommendations) route through `video_scenes` when available, with `title_marengo` as fallback. Self-serve upload via `POST /api/videos/upload` (max 100MB). Shared `_scene_similarity` / `_title_similarity` in `videos.py` eliminate code duplication. `_select_videos` fetches computed attrs in a single query pass. `_load_creators_map()` cached with 5-min TTL. Quick-start: 3 videos (~4 min setup). Full: 25 videos from TL index with HLS playback, 10 creators. Dependencies: `scenedetect`, `opencv-python-headless`.
+Fully implemented. FastAPI + Pixeltable backend with scene-based video indexing. `scene_detect_histogram` finds natural scene boundaries, `video_splitter(mode='fast')` splits at those points (stream copy, no re-encoding), and Marengo 3.0 embeds each scene. All queries (search and recommendations) route through `video_scenes` when available, with `title_marengo` as fallback. Shared `_scene_similarity` / `_title_similarity` in `videos.py` eliminate code duplication. `_select_videos` fetches computed attrs in a single query pass. `_load_creators_map()` cached with 5-min TTL. Quick-start: 3 videos (~4 min setup). Full: 25 videos from TL index with HLS playback, 10 creators. Dependencies: `scenedetect`, `opencv-python-headless`.
