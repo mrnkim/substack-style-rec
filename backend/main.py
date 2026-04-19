@@ -56,6 +56,18 @@ app.include_router(recommendations.router)
 app.include_router(search.router)
 
 
+@app.get("/health")
+def health() -> dict[str, str]:
+    """Process-level health check for Render / Vercel / load balancers.
+
+    Deliberately does not touch Pixeltable: we want this endpoint to return
+    200 as soon as the process is up, even on a fresh disk where
+    `setup_pixeltable.py` has not been run yet. Data-plane readiness is
+    observable via `/api/videos` returning a non-empty list.
+    """
+    return {"status": "ok"}
+
+
 if __name__ == "__main__":
     import uvicorn
 
