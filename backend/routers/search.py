@@ -82,10 +82,17 @@ def _search(videos_t, scenes_t, q, creator_id, limit, **file_kwargs):
             logger.warning("scene search failed (%s), falling back to title", exc)
 
     if is_file_query:
-        logger.warning(
-            "  File search requires video_scenes view (not created yet). "
-            "Run 'uv run download_videos.py && uv run setup_pixeltable.py' to enable."
-        )
+        if scenes_t is None:
+            logger.warning(
+                "  File search requires video_scenes view (not created yet). "
+                "Run 'uv run download_videos.py && uv run setup_pixeltable.py' to enable."
+            )
+        else:
+            logger.warning(
+                "  File multimodal search failed (embed limits or similarity error). "
+                "Twelve Labs caps images at ~5 MB and video query files at ~36 MB; "
+                "try a smaller file or add a text query for title fallback."
+            )
         return None
 
     if q:
@@ -169,7 +176,7 @@ async def search_multimodal(
                     query=f"[{modality}] {file.filename}",
                     modality=modality,
                     results=[],
-                    message="File search requires video scenes. Run download_videos.py + setup_pixeltable.py first.",
+                    message="File search failed (e.g. file over embed size limit). Use a smaller image/video or add text.",
                 )
             return _format_results(rows, label, modality=modality)
 

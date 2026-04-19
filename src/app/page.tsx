@@ -23,16 +23,34 @@ export default function HomePage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const loadData = async () => {
-      const [allVideos, recs] = await Promise.all([
-        getVideos(),
-        getForYouRecommendations(subscriptions, watchHistory, 10),
-      ]);
-      setVideos(allVideos);
-      setForYou(recs);
-      setLoading(false);
+    let cancelled = false;
+    setLoading(true);
+    setForYou([]);
+
+    getVideos()
+      .then((allVideos) => {
+        if (cancelled) return;
+        setVideos(Array.isArray(allVideos) ? allVideos : []);
+      })
+      .catch(() => {
+        if (!cancelled) setVideos([]);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+
+    getForYouRecommendations(subscriptions, watchHistory, 10)
+      .then((recs) => {
+        if (cancelled) return;
+        setForYou(Array.isArray(recs) ? recs : []);
+      })
+      .catch(() => {
+        if (!cancelled) setForYou([]);
+      });
+
+    return () => {
+      cancelled = true;
     };
-    loadData();
   }, [subscriptions, watchHistory]);
 
   if (loading) {

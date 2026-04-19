@@ -26,7 +26,7 @@ export async function getVideos(opts?: {
     const res = await fetch(`${API_BASE}/videos${qs ? `?${qs}` : ""}`);
     if (!res.ok) return [];
     const data = await res.json();
-    return data.data;
+    return data.data ?? [];
   } catch {
     return [];
   }
@@ -51,7 +51,7 @@ export async function getCreators(): Promise<Creator[]> {
     const res = await fetch(`${API_BASE}/creators`);
     if (!res.ok) return [];
     const data = await res.json();
-    return data.data;
+    return data.data ?? [];
   } catch {
     return [];
   }
@@ -86,7 +86,7 @@ export async function getForYouRecommendations(
     });
     if (!res.ok) return [];
     const data = await res.json();
-    return data.recommendations;
+    return data.recommendations ?? [];
   } catch {
     return [];
   }
@@ -105,7 +105,7 @@ export async function getSimilarVideos(
     });
     if (!res.ok) return [];
     const data = await res.json();
-    return data.recommendations;
+    return data.recommendations ?? [];
   } catch {
     return [];
   }

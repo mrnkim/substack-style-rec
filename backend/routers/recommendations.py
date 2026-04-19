@@ -2,6 +2,7 @@
 
 import logging
 from collections import defaultdict
+from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
 import pixeltable as pxt
@@ -43,10 +44,21 @@ def _apply_diversity(candidates: list[dict], max_per_creator: int = 2) -> list[d
 
 
 def _sim_kwargs_from_ref(ref: dict) -> dict:
-    """Prefer full-file video query when we have a local path; else title text (cookbook text-to-video)."""
+    """Prefer full-file video query when local file exists and is under TL embed size cap; else title."""
     path = ref.get("_video_path") or ref.get("video")
     if path and str(path).strip():
-        return {"video": str(path)}
+        p = Path(str(path))
+        try:
+            if p.is_file():
+                size = p.stat().st_size
+                if size <= config.TWELVELABS_EMBED_VIDEO_MAX_BYTES:
+                    return {"video": str(p)}
+                logger.info(
+                    "  skip video= query (%.1f MB > embed cap); using title",
+                    size / (1024 * 1024),
+                )
+        except OSError:
+            pass
     title = (ref.get("title") or "").strip()
     return {"string": title if title else "untitled"}
 
@@ -96,7 +108,13 @@ def _similarity_candidates(
             logger.warning("scene similarity failed (%s), falling back to title", exc)
 
     logger.info("  [title fallback] using title similarity")
-    return _title_similarity(videos_t, title_fallback, exclude_ids, limit, creator_id)
+    try:
+        return _title_similarity(
+            videos_t, title_fallback, exclude_ids, limit, creator_id
+        )
+    except Exception as exc:
+        logger.warning("title similarity failed (%s); empty candidates", exc)
+        return []
 
 
 def _matched_attrs(source: dict, target: dict) -> list[str]:

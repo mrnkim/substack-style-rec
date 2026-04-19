@@ -14,6 +14,9 @@ TWELVELABS_API_KEY = os.getenv("TWELVELABS_API_KEY", "")
 TWELVELABS_INDEX_ID = os.getenv("TWELVELABS_INDEX_ID", "")
 TWELVELABS_BASE_URL = "https://api.twelvelabs.io/v1.3"
 
+# Embed API v2 rejects query video files over 36 MB; stay under to use similarity(video=path).
+TWELVELABS_EMBED_VIDEO_MAX_BYTES = 35 * 1024 * 1024
+
 CORS_ORIGINS: list[str] = [
     origin.strip()
     for origin in os.getenv(
