@@ -30,7 +30,7 @@ FastAPI Backend (localhost:8000)
        |
        v
 Pixeltable
-  ├── creators table (10 creators)
+  ├── creators table (11 creators)
   ├── videos table (25 videos + pxt.Video + scene detection + topic/style/tone)
   ├── video_scenes view (scene_detect_histogram + video_splitter mode=fast)
   ├── scene_marengo embedding index (multimodal video content per scene)
@@ -64,9 +64,9 @@ See the [Pixeltable + Twelve Labs integration docs](https://docs.pixeltable.com/
 
 ## Content
 
-25 longform creator videos across 10 creators and 4 categories:
+25 longform videos indexed in Twelve Labs, drawn from a curated set of 30 across 11 creators and 4 categories (`scripts/curate_videos.csv`):
 
-| Category | Creators | Videos |
+| Category | Creators | Curated |
 |---|---|---|
 | Interview | First We Feast, The Futur, Colin & Samir, Diary of a CEO, Mel Robbins | 13 |
 | Commentary | Johnny Harris, ColdFusion | 6 |
@@ -121,6 +121,15 @@ Add to the root `.env.local`:
 ```
 NEXT_PUBLIC_API_BASE=http://localhost:8000/api
 ```
+
+Without this, the browser talks to the Next.js `/api/*` routes instead of FastAPI + Pixeltable, so behavior will not match the backend docs.
+
+### Run order (follow once per machine)
+
+1. **Backend env** — `backend/.env.local` with `TWELVELABS_API_KEY` and `TWELVELABS_INDEX_ID` (`backend/.env` also works; `config.py` reads both). Optional: `PIXELTABLE_HOME=./data` so Pixeltable data lives under `backend/data/`.
+2. **Install & load data** — From `backend/`: `uv sync`, then `uv run download_videos.py` (or `--full`), then `uv run setup_pixeltable.py` (matching `--full` if you used it). Skipping download/setup leaves empty tables or no `video_scenes` view.
+3. **Root env** — Repo root `.env.local` with `NEXT_PUBLIC_API_BASE=http://localhost:8000/api` as above.
+4. **Run two processes** — Terminal A: `cd backend && uv run main.py` (port 8000). Terminal B: repo root `npm run dev` (port 3000).
 
 Quick-start uses 3 short videos for fast iteration (~4 min total setup). Pass `--full` to load all 25 videos with scene detection and Marengo embeddings.
 
