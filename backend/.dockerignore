@@ -1,0 +1,10 @@
+.venv
+data
+video_files
+logs
+__pycache__
+*.pyc
+*.log
+.env
+.env.local
+.pytest_cache

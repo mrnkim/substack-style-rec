@@ -1,262 +1,126 @@
 # HANDOFF.md — Substack TV-Style Recommendation Engine
 
-> Last updated: 2026-03-25
+> Last updated: 2026-04-18
+>
+> This file is a short, current snapshot. Canonical docs:
+> - **Setup & quick start** → [`README.md`](./README.md)
+> - **Backend API spec** → [`docs/BACKEND_SPEC.md`](./docs/BACKEND_SPEC.md)
+> - **Agent guide** → [`CLAUDE.md`](./CLAUDE.md)
 
 ## Project Overview
 
-AI-powered video recommendation engine demo in the style of Substack TV. Uses Twelve Labs Marengo embeddings + PixelTable backend for semantic video recommendations.
+AI-powered video recommendation demo in the style of Substack TV. Uses Twelve Labs Marengo 3.0 embeddings + Pixeltable for semantic, explainable, cross-creator recommendations.
 
-**Goal**: Demonstrate TwelveLabs' multimodal video understanding for ISV creator platforms (UScreen, Substack, Kajabi) with Netflix-style discovery and personalized recommendations.
+**Goal**: Demonstrate TwelveLabs multimodal video understanding for ISV creator platforms (Substack, UScreen, Kajabi) with Netflix-style discovery.
 
 ## Architecture
 
 ```
-┌─────────────────────────────┐
-│  Frontend (Next.js + TS)    │
-│  Deployed on Vercel         │
-└──────────┬──────────────────┘
-           │ /api/* routes (Next.js)
-           │ Currently: Twelve Labs API direct
-           │ Future:    PixelTable FastAPI
-           ▼
-┌─────────────────────────────┐
-│  Twelve Labs API            │
-│  • Video index (25 videos)  │
-│  • HLS streaming + thumbs   │
-│  • user_metadata (creator,  │
-│    category, uploadDate)    │
-│  • Marengo 3.0 embeddings   │
-│  • Analyze API (attributes) │
-└─────────────────────────────┘
-           │
-           ▼ (Phase 2)
-┌─────────────────────────────┐
-│  Backend (FastAPI + Python) │  ← PixelTable team owns this
-│  PixelTable = unified data  │
-│  (storage + embeddings +    │
-│   vector search + pipeline) │
-└─────────────────────────────┘
+Next.js 16 frontend (localhost:3000)
+       |  NEXT_PUBLIC_API_BASE
+       v
+FastAPI backend (localhost:8000)
+       |
+       v
+Pixeltable
+  ├── creators table (11 creators)
+  ├── videos table (25 indexed videos + pxt.Video + Analyze API attrs)
+  ├── video_scenes view (scene_detect_histogram + video_splitter mode=fast)
+  ├── scene_marengo embedding index (per-scene Marengo 3.0 vectors)
+  └── title_marengo embedding index (text fallback)
+       |
+       v
+Twelve Labs API (Embed v2 + Analyze)
 ```
+
+### Data flow
+
+- **Default** — Browser → Next.js `/api/*` routes → Twelve Labs (fallback when no backend).
+- **With backend** — Set `NEXT_PUBLIC_API_BASE=http://localhost:8000/api`. Browser → FastAPI → Pixeltable → Twelve Labs.
 
 ## Tech Stack
 
-| Layer | Tech | Notes |
-|---|---|---|
-| Frontend | Next.js 16 + TypeScript + Tailwind CSS | App Router, client components |
-| Video Data | Twelve Labs API (index: `69c37b6708cd679f8afbd748`) | 25 videos, HLS streaming, CloudFront thumbnails |
-| Video Player | hls.js | HLS streaming playback |
-| Backend (future) | FastAPI + PixelTable | PixelTable team implements |
-| Embeddings | Twelve Labs Marengo 3.0 | Multimodal (visual + audio) |
-| Attribute Extraction | Twelve Labs Analyze API | Topic, style, tone (not yet extracted) |
-| Design System | Strand dark variant | Brand green accent, warm charcoal |
-| Deployment | Vercel (FE) + TBD (BE) | |
+| Layer | Tech |
+|---|---|
+| Frontend | Next.js 16, React 19, TypeScript, Tailwind CSS v4, hls.js |
+| Backend | FastAPI + Pixeltable + `uv` package management |
+| Embeddings | Twelve Labs Marengo 3.0 (512-dim), scene-level + title fallback |
+| Attribute Extraction | Twelve Labs Analyze API (topic / style / tone) |
+| Scene Detection | Pixeltable `scene_detect_histogram` + `video_splitter(mode='fast')` |
+| Video Player | hls.js with CloudFront HLS URLs from Twelve Labs |
+| Storage | Local Pixeltable Postgres (`PIXELTABLE_HOME`) |
 
 ## Implementation Status
 
-### Phase 1: Foundation (Complete)
-- [x] Project scaffolding (Next.js + TS + Tailwind)
-- [x] Backend spec for PixelTable team (`docs/BACKEND_SPEC.md`)
-- [x] Video curation — 25 YouTube longform videos across 10 creators
-- [x] Video download + Twelve Labs indexing (index: `69c37b6708cd679f8afbd748`)
-- [x] Creator/category metadata stored in TL `user_metadata`
-- [x] Frontend fetches real data from Twelve Labs API via Next.js API routes
-- [x] HLS video playback with hls.js
-- [x] Real CloudFront thumbnails (not placeholders)
-- [x] Cold start fallback for empty watch history
-- [x] All 5 pages functional with real data
-  - Dark theme, Strand design system (dark variant)
-  - Instrument Serif display + Geist body fonts
-  - TwelveLabs green (#00DC82) accent
+### Complete
+- Pixeltable schema: creators + videos + `video_scenes` view with scene-level Marengo 3.0 embeddings.
+- Scene detection via `scene_detect_histogram` + stream-copy `video_splitter(mode='fast')` — no re-encoding.
+- Analyze API computed columns: topic, style, tone run automatically on INSERT.
+- All endpoints: `/api/videos`, `/api/creators`, `/api/recommendations/{for-you,similar,creator-catalog}`, `/api/search` (GET text + POST multimodal).
+- 70 / 30 subscription / discovery split with max-2-per-creator diversity.
+- Explainable recommendations (`generate_reason` UDF).
+- Cold start fallback (latest from subscriptions + discovery).
+- Multimodal search (image / video / audio file upload → cross-modal scene matching).
+- Resilience: size guards on Twelve Labs Embed v2 (35 MB), title-similarity fallback on API failures, frontend decoupled loading so one failing endpoint never blocks the page.
 
-### Phase 2: Core Features (PixelTable Integration)
-- [ ] Connect to PixelTable FastAPI backend (swap `API_BASE` in `src/lib/api.ts`)
-- [ ] Real Marengo embedding-based recommendations (replace client-side similarity)
-- [ ] Analyze API attribute extraction → store in TL `user_metadata`
-- [ ] Session-based refinement (live personalization)
+### Open
+- Session-based live personalization (re-rank within a session based on in-session clicks).
+- Production deployment of the FastAPI backend (frontend is Vercel-ready today).
 
-### Phase 3: Polish
-- [ ] Explainable recommendations with Analyze API attributes
-- [ ] Creator diversity filter (max 2 per creator in results)
-- [ ] Responsive design refinements
-- [ ] Production deployment
+## Content
 
-## Data Flow
+25 longform videos indexed in Twelve Labs, drawn from a curated set of 30 across 11 creators and 4 categories. Full breakdown in [`README.md`](./README.md#content) and the raw list in [`scripts/curate_videos.csv`](./scripts/curate_videos.csv).
 
-### Current (Phase 1)
-```
-Browser → Next.js API routes → Twelve Labs API
-                                 ├─ GET /indexes/{id}/videos (list)
-                                 ├─ GET /indexes/{id}/videos/{vid} (detail)
-                                 └─ Returns: system_metadata + hls + user_metadata
-```
-
-### Future (Phase 2 — PixelTable)
-```
-Browser → Next.js API routes → PixelTable FastAPI → PixelTable + TL API
-          (swap API_BASE)       ├─ /api/videos
-                                ├─ /api/recommendations/*
-                                └─ /api/search
-```
-
-## Twelve Labs Index
-
-- **Index name**: `substack-style-rec`
-- **Index ID**: `69c37b6708cd679f8afbd748`
+- **Twelve Labs index**: `69c37b6708cd679f8afbd748` (`substack-style-rec`)
 - **Models**: Marengo 3.0 (visual + audio), Pegasus 1.2
-- **Addons**: thumbnail
-- **Video count**: 25 (19 originally indexed + 6 added later)
-- **Total duration**: ~11.6 hours
-
-### user_metadata Schema (per video)
-
-Stored via `scripts/update_tl_metadata.py`:
-
-```json
-{
-  "youtubeId": "j9Qm6_lEdcQ",
-  "creatorId": "UCPD_bxCRGpmmeQcbe2kpPaA",
-  "creatorName": "First We Feast",
-  "category": "interview",
-  "uploadDate": "2025-06-12"
-}
-```
-
-Future additions (from Analyze API):
-```json
-{
-  "topic": ["food", "celebrity", "challenge"],
-  "style": "interview",
-  "tone": "playful"
-}
-```
-
-## Data Model
-
-### Video
-```typescript
-{
-  id: string              // Twelve Labs video_id (not YouTube ID)
-  title: string
-  creator: Creator
-  category: "interview" | "commentary" | "creative" | "educational"
-  duration: number        // seconds
-  thumbnailUrl: string    // CloudFront URL from TL
-  hlsUrl?: string         // HLS streaming URL from TL
-  uploadDate: string
-  attributes?: {          // Optional — extracted via Analyze API
-    topic: string[]
-    style: VideoStyle
-    tone: VideoTone
-  }
-}
-```
-
-### Creator
-```typescript
-{
-  id: string              // YouTube channel ID
-  name: string
-  avatarUrl: string
-  description: string     // Static, in src/lib/twelve-labs.ts
-  videoCount: number      // Computed from video list
-}
-```
-
-### UserState (client-side, simulated)
-```typescript
-{
-  subscriptions: string[]   // creator IDs (YouTube channel IDs)
-  watchHistory: string[]    // video IDs (TL video IDs)
-}
-```
-
-## API Routes (Next.js)
-
-| Method | Route | Source | Description |
-|---|---|---|---|
-| GET | `/api/videos` | Twelve Labs API | List all videos, optional `?category=` `?creator_id=` |
-| GET | `/api/videos/[id]` | Twelve Labs API | Single video detail |
-| GET | `/api/creators` | Twelve Labs API | List all creators (derived from videos) |
-| GET | `/api/creators/[id]` | Twelve Labs API | Creator detail + video list |
-
-Future (PixelTable):
-| POST | `/api/recommendations/for-you` | PixelTable | Embedding-based recommendations |
-| POST | `/api/recommendations/similar` | PixelTable | Similar video sidebar |
-| GET | `/api/search?q=` | PixelTable | Semantic search |
-
-## Content Inventory
-
-| Creator | Videos | Category |
-|---|---|---|
-| First We Feast | 3 | interview |
-| The Futur | 2 | interview |
-| Colin and Samir | 2 | interview |
-| The Diary Of A CEO | 3 | interview |
-| Mel Robbins | 3 | interview |
-| Johnny Harris | 3 | commentary |
-| ColdFusion | 3 | commentary |
-| Vox | 3 | creative |
-| Kirsten Dirksen | 3 | creative |
-| 3Blue1Brown | 3 | educational |
-| Apple Music | 2 | creative |
-| **Total** | **25** | |
-
-Note: 6 videos from CSV (curate_videos.csv lists 31) were not uploaded to the TL index.
+- **user_metadata** schema per video (written by `scripts/update_tl_metadata.py`): `youtubeId`, `creatorId`, `creatorName`, `category`, `uploadDate`.
 
 ## Scripts
 
-| Script | Location | Purpose |
-|---|---|---|
-| `download_and_collect.py` | `scripts/` | Download YouTube videos + collect metadata CSVs |
-| `update_tl_metadata.py` | `scripts/` | Upload creator/category metadata to TL user_metadata |
-| `curate_videos.csv` | `scripts/` | Curated video list with YouTube IDs + categories |
-| `videos_metadata.csv` | `scripts/` | Video metadata (title, creator, duration, thumbnail) |
-| `creators_metadata.csv` | `scripts/` | Creator metadata (name, channel URL, follower count) |
-| `CURATION_GUIDE.md` | `scripts/` | Channel suggestions + selection criteria |
+Data curation (one-time, lives in `scripts/`):
 
-## Key Files
-
-| File | Purpose |
+| Script | Purpose |
 |---|---|
-| `src/lib/twelve-labs.ts` | Server-side TL API client + video mapping |
-| `src/lib/api.ts` | Client-side fetch helpers (swap `API_BASE` for PixelTable) |
-| `src/lib/types.ts` | Core TypeScript types |
-| `src/lib/user-state.tsx` | Client-side subscription + watch history (localStorage) |
-| `src/components/video-player.tsx` | HLS video player (hls.js) |
-| `docs/BACKEND_SPEC.md` | Full API spec for PixelTable team |
+| `download_and_collect.py` | Download YouTube videos + collect metadata CSVs |
+| `update_tl_metadata.py` | Upload creator/category metadata into TL `user_metadata` |
+| `curate_videos.csv` | Curated YouTube IDs + category |
+| `creators_metadata.csv`, `videos_metadata.csv` | Creator + per-video metadata |
+| `CURATION_GUIDE.md` | Channel suggestions + selection criteria |
+
+Runtime (lives in `backend/`, run with `uv`):
+
+| Script | Purpose |
+|---|---|
+| `download_videos.py` | Fetch MP4 files from YouTube for Pixeltable ingestion |
+| `setup_pixeltable.py` | Create schema, ingest, build scene view + embedding indexes |
+| `run_setup_logged.sh` | Same, with `pxt.drop_dir` reset + logging to `backend/logs/` |
+| `main.py` | Start FastAPI on `:8000` |
 
 ## Key Decisions
 
-1. **Twelve Labs as interim data source**: Videos fetched from TL API via Next.js API routes; swap to PixelTable by changing `API_BASE` in `src/lib/api.ts`
-2. **user_metadata for enrichment**: Creator info, category, uploadDate stored in TL `user_metadata` — single source of truth, no local mapping files
-3. **attributes optional**: Video attributes (topic, style, tone) will be populated later via Analyze API; UI gracefully hides when absent
-4. **HLS streaming**: Videos play via hls.js using CloudFront HLS URLs from TL
-5. **Subscription = simulated**: localStorage-based toggle, no real auth
-6. **Watch history = click-based**: Entering watch page marks video as watched (TL video IDs)
-7. **Cold start fallback**: Empty watch history → latest videos from subscribed creators + discovery
-8. **Design**: Strand design system dark variant — TwelveLabs brand green (#00DC82) on warm charcoal
-
-## Handoff to PixelTable Team
-
-> Full spec: `docs/BACKEND_SPEC.md`
-
-Core deliverables for the PixelTable team:
-1. **PixelTable schema**: videos table + Marengo embedding index
-2. **Computed columns**: Video INSERT triggers segmentation → embedding → attribute extraction pipeline
-3. **FastAPI endpoints**: See API table above — frontend already matches these shapes
-4. **Recommendation logic**: `.similarity()` based + subscription/diversity filtering
-5. **Semantic search**: Text-to-video cross-modal search
-6. **Cold start handling**: See `docs/BACKEND_SPEC.md` for fallback logic when watch_history is empty
-
-### Integration Steps
-1. PixelTable team deploys FastAPI server
-2. Frontend updates `API_BASE` in `src/lib/api.ts` to point to FastAPI URL
-3. Add recommendation endpoints (`/api/recommendations/*`) to `src/lib/api.ts`
-4. Replace client-side similarity logic with real embedding-based results
+1. **Dual data source** — Frontend works against Next.js `/api/*` (TL direct) or FastAPI + Pixeltable, toggled by `NEXT_PUBLIC_API_BASE`. Keeps the demo runnable without the backend.
+2. **Scene-level retrieval** — `video_scenes` is the primary index; `title_marengo` is the fallback when scene embedding or the Embed API fails. All rec + search paths use both helpers in `backend/routers/videos.py`.
+3. **`user_metadata` as source of truth** — Creator / category / upload date live in Twelve Labs, not in local JSON. `scripts/update_tl_metadata.py` writes; runtime only reads.
+4. **Analyze as computed columns** — Topic / style / tone run automatically on INSERT, so attribute-based recommendation reasons are always available.
+5. **Diversity + hybrid discovery** — 70 / 30 subscription / discovery split with max 2 videos per creator. Prevents the classic filter bubble without abandoning subscribed creators.
+6. **Local-first Pixeltable** — `PIXELTABLE_HOME=./data` under `backend/` so other Pixeltable projects on the same machine stay untouched. `pxt.drop_dir(substack_rec)` is the safe reset — never delete `~/.pixeltable`.
+7. **Resilience by default** — Twelve Labs rate-limits, 502s, and file-size limits all degrade gracefully to title similarity or empty results rather than 500s or hung frontends.
 
 ## Environment Variables
 
+### Frontend (`.env.local` at repo root)
 ```
-TWELVELABS_API_KEY=tlk_...    # .env.local (gitignored)
+TWELVELABS_API_KEY=tlk_...
 TWELVELABS_INDEX_ID=69c37b6708cd679f8afbd748
+NEXT_PUBLIC_API_BASE=http://localhost:8000/api   # Optional: use Pixeltable backend
 ```
+
+### Backend (`backend/.env.local` or `backend/.env` — `config.py` loads both)
+```
+TWELVELABS_API_KEY=tlk_...
+TWELVELABS_INDEX_ID=69c37b6708cd679f8afbd748
+CORS_ORIGINS=http://localhost:3000
+PIXELTABLE_HOME=./data                            # Optional: scope Pixeltable to this repo
+```
+
+See [`README.md`](./README.md#quick-start) for the full run order.

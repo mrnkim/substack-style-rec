@@ -1,0 +1,39 @@
+# Render Blueprint — reproducible deploy of the FastAPI + Pixeltable backend.
+#
+# First-time deploy:
+#   1. In Render dashboard → New → Blueprint → point at this repo.
+#   2. Render creates the web service + disk.
+#   3. Set the two `sync: false` env vars (API key, CORS origins) in the UI.
+#   4. After first deploy finishes, open the Render Shell and run:
+#        uv run download_videos.py --full
+#        uv run setup_pixeltable.py --full
+#      (or drop `--full` for the 3-video quick-start.)
+#   5. Subsequent deploys reattach to the same disk, so setup does not re-run.
+
+services:
+  - type: web
+    name: substack-rec-api
+    runtime: docker
+    rootDir: backend
+    dockerfilePath: ./Dockerfile
+    plan: starter                # Disks require Starter or higher.
+    region: oregon               # Match your Vercel region if latency matters.
+    healthCheckPath: /health
+    autoDeploy: true
+
+    disk:
+      name: pixeltable-data
+      mountPath: /var/pixeltable
+      sizeGB: 20                 # ~13 GB videos + pgdata + margin for --full.
+
+    envVars:
+      - key: TWELVELABS_API_KEY
+        sync: false              # Set manually in Render dashboard.
+      - key: TWELVELABS_INDEX_ID
+        value: 69c37b6708cd679f8afbd748
+      - key: PIXELTABLE_HOME
+        value: /var/pixeltable
+      - key: CORS_ORIGINS
+        sync: false              # e.g. https://substack-style-rec.vercel.app
+                                 # (Vercel preview URLs are already covered by
+                                 #  the *.vercel.app regex in backend/main.py.)

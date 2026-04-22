@@ -31,8 +31,12 @@ export default function RootLayout({
     <html
       lang="en"
       className={`${notoSans.variable} ${ibmPlexMono.variable} h-full antialiased`}
+      suppressHydrationWarning
     >
-      <body className="noise min-h-full flex flex-col font-[family-name:var(--font-sans)]">
+      <body
+        className="noise min-h-full flex flex-col font-[family-name:var(--font-sans)]"
+        suppressHydrationWarning
+      >
         <UserStateProvider>
           <Nav />
           <main className="flex-1 pt-14">{children}</main>

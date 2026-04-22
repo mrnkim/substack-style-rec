@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useUserState } from "@/lib/user-state";
-import { getVideos } from "@/lib/api";
+import { getVideos, getForYouRecommendations } from "@/lib/api";
 import { HeroFeature } from "@/components/hero-feature";
 import { VideoRow } from "@/components/video-row";
 import type { Video, Recommendation } from "@/lib/types";
@@ -19,14 +19,39 @@ function toRec(
 export default function HomePage() {
   const { subscriptions, watchHistory } = useUserState();
   const [videos, setVideos] = useState<Video[]>([]);
+  const [forYou, setForYou] = useState<Recommendation[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    getVideos().then((v) => {
-      setVideos(v);
-      setLoading(false);
-    });
-  }, []);
+    let cancelled = false;
+    setLoading(true);
+    setForYou([]);
+
+    getVideos()
+      .then((allVideos) => {
+        if (cancelled) return;
+        setVideos(Array.isArray(allVideos) ? allVideos : []);
+      })
+      .catch(() => {
+        if (!cancelled) setVideos([]);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+
+    getForYouRecommendations(subscriptions, watchHistory, 10)
+      .then((recs) => {
+        if (cancelled) return;
+        setForYou(Array.isArray(recs) ? recs : []);
+      })
+      .catch(() => {
+        if (!cancelled) setForYou([]);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [subscriptions, watchHistory]);
 
   if (loading) {
     return (
@@ -35,26 +60,6 @@ export default function HomePage() {
       </div>
     );
   }
-
-  const unwatched = videos.filter((v) => !watchHistory.includes(v.id));
-
-  // For You — cold start or similarity-based
-  const forYou: Recommendation[] = (() => {
-    const subscribed = unwatched.filter((v) => subscriptions.includes(v.creator.id));
-    const discovery = unwatched.filter((v) => !subscriptions.includes(v.creator.id));
-
-    const subRecs = subscribed
-      .sort((a, b) => new Date(b.uploadDate).getTime() - new Date(a.uploadDate).getTime())
-      .slice(0, 7)
-      .map((v) => toRec(v, `From ${v.creator.name}`, "subscription"));
-
-    const discoRecs = discovery
-      .sort((a, b) => new Date(b.uploadDate).getTime() - new Date(a.uploadDate).getTime())
-      .slice(0, 3)
-      .map((v) => toRec(v, `Discover ${v.creator.name}`, "discovery", 0.85));
-
-    return [...subRecs, ...discoRecs];
-  })();
 
   const featured = forYou[0]?.video ?? videos[0];
 
@@ -90,7 +95,11 @@ export default function HomePage() {
       <div className="space-y-10 mt-8">
         <VideoRow
           title="For You"
-          subtitle={`Based on your ${subscriptions.length} subscriptions`}
+          subtitle={
+            watchHistory.length > 0
+              ? "Powered by Marengo semantic similarity"
+              : `Based on your ${subscriptions.length} subscriptions`
+          }
           recommendations={forYou}
           showReasons
           cardSize="lg"

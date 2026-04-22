@@ -1,8 +1,8 @@
 "use client";
 
-import { use, useEffect, useState } from "react";
+import { use, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { getVideo, getVideos } from "@/lib/api";
+import { getVideo, getSimilarVideos } from "@/lib/api";
 import { useUserState } from "@/lib/user-state";
 import { SubscribeButton } from "@/components/subscribe-button";
 import { VideoCard } from "@/components/video-card";
@@ -12,38 +12,21 @@ import type { Video, Recommendation } from "@/lib/types";
 
 export default function WatchPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
-  const { markWatched } = useUserState();
+  const { markWatched, watchHistory } = useUserState();
   const [video, setVideo] = useState<Video | null>(null);
   const [similar, setSimilar] = useState<Recommendation[]>([]);
   const [loading, setLoading] = useState(true);
+  const watchHistoryRef = useRef(watchHistory);
+  watchHistoryRef.current = watchHistory;
 
   useEffect(() => {
-    Promise.all([getVideo(id), getVideos()]).then(([v, allVideos]) => {
+    setLoading(true);
+    Promise.all([
+      getVideo(id),
+      getSimilarVideos(id, watchHistoryRef.current, 8),
+    ]).then(([v, recs]) => {
       setVideo(v);
-      if (v) {
-        // Simple similarity: same category or same creator, excluding current
-        const recs = allVideos
-          .filter((other) => other.id !== v.id)
-          .map((other) => {
-            const sameCreator = other.creator.id === v.creator.id;
-            const sameCategory = other.category === v.category;
-            const score = (sameCreator ? 0.4 : 0) + (sameCategory ? 0.3 : 0) + Math.random() * 0.2;
-            return {
-              video: other,
-              score,
-              reason: sameCreator
-                ? `More from ${other.creator.name}`
-                : sameCategory
-                  ? `Similar ${other.category} content`
-                  : "You might also enjoy",
-              matchedAttributes: [] as string[],
-              source: sameCreator ? ("subscription" as const) : ("discovery" as const),
-            };
-          })
-          .sort((a, b) => b.score - a.score)
-          .slice(0, 8);
-        setSimilar(recs);
-      }
+      setSimilar(recs);
       setLoading(false);
     });
   }, [id]);

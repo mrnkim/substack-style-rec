@@ -1,27 +1,37 @@
 "use client";
 
 import { use, useEffect, useState } from "react";
-import { getCreator } from "@/lib/api";
+import { getCreator, getCreatorCatalog } from "@/lib/api";
+import { useUserState } from "@/lib/user-state";
 import { SubscribeButton } from "@/components/subscribe-button";
 import { VideoCard } from "@/components/video-card";
+import { VideoRow } from "@/components/video-row";
 import { categoryLabel } from "@/lib/utils";
-import type { Creator, Video } from "@/lib/types";
+import type { Creator, Video, Recommendation } from "@/lib/types";
 
 export default function CreatorPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
+  const { watchHistory } = useUserState();
   const [creator, setCreator] = useState<Creator | null>(null);
   const [creatorVideos, setCreatorVideos] = useState<Video[]>([]);
+  const [recommended, setRecommended] = useState<Recommendation[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    getCreator(id).then((data) => {
+    const loadData = async () => {
+      const [data, recs] = await Promise.all([
+        getCreator(id),
+        getCreatorCatalog(id, watchHistory, 10),
+      ]);
       if (data) {
         setCreator(data.creator);
         setCreatorVideos(data.videos);
       }
+      setRecommended(recs);
       setLoading(false);
-    });
-  }, [id]);
+    };
+    loadData();
+  }, [id, watchHistory]);
 
   if (loading) {
     return (
@@ -95,6 +105,16 @@ export default function CreatorPage({ params }: { params: Promise<{ id: string }
 
       {/* Video grid */}
       <div className="px-8 mt-4 space-y-10">
+        {/* Recommended from this creator (relevance-sorted via Pixeltable) */}
+        {recommended.length > 0 && watchHistory.length > 0 && (
+          <VideoRow
+            title="Recommended from this creator"
+            subtitle="Sorted by relevance to your interests"
+            recommendations={recommended}
+            showReasons
+          />
+        )}
+
         {/* All videos */}
         <section>
           <h2 className="text-lg font-semibold text-[var(--text-primary)] mb-4">

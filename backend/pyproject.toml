@@ -1,0 +1,17 @@
+[project]
+name = "substack-rec-backend"
+version = "0.1.0"
+description = "FastAPI + Pixeltable backend for Substack TV-style video recommendations"
+requires-python = ">=3.10"
+dependencies = [
+    "pixeltable>=0.5.27",
+    "fastapi",
+    "uvicorn[standard]",
+    "python-dotenv",
+    "python-multipart",
+    "twelvelabs",
+    "httpx",
+    "yt-dlp",
+    "scenedetect>=0.6.7.1",
+    "opencv-python-headless>=4.13.0.92",
+]
