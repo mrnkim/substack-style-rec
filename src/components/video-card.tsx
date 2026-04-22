@@ -7,6 +7,7 @@ import { formatDuration } from "@/lib/utils";
 interface VideoCardProps {
   video: Video;
   reason?: string;
+  matchedAttributes?: string[];
   source?: "subscription" | "discovery";
   showCreator?: boolean;
   size?: "sm" | "md" | "lg";
@@ -21,6 +22,7 @@ const sizeStyles = {
 export function VideoCard({
   video,
   reason,
+  matchedAttributes,
   source,
   showCreator = true,
   size = "md",
@@ -84,19 +86,33 @@ export function VideoCard({
           </div>
         )}
 
-        {/* Recommendation reason */}
+        {/* Recommendation reason + attributes */}
         {reason && (
-          <div className="flex items-center gap-1.5 mt-1">
-            {source && (
-              <span
-                className={`inline-block px-1.5 py-0.5 text-[9px] font-semibold rounded-sm uppercase tracking-wider ${
-                  source === "subscription" ? "badge-subscription" : "badge-discovery"
-                }`}
-              >
-                {source === "subscription" ? "Following" : "Discover"}
-              </span>
+          <div className="mt-1.5 space-y-1.5">
+            <div className="flex items-center gap-1.5">
+              {source && (
+                <span
+                  className={`inline-block shrink-0 px-1.5 py-0.5 text-[9px] font-semibold rounded-sm uppercase tracking-wider ${
+                    source === "subscription" ? "badge-subscription" : "badge-discovery"
+                  }`}
+                >
+                  {source === "subscription" ? "Following" : "Discover"}
+                </span>
+              )}
+              <span className="text-[11px] text-[var(--text-tertiary)] line-clamp-2">{reason}</span>
+            </div>
+            {matchedAttributes && matchedAttributes.length > 0 && (
+              <div className="flex flex-wrap gap-1">
+                {matchedAttributes.map((attr) => (
+                  <span
+                    key={attr}
+                    className="attr-pill"
+                  >
+                    {attr}
+                  </span>
+                ))}
+              </div>
             )}
-            <span className="text-[11px] text-[var(--text-tertiary)] italic">{reason}</span>
           </div>
         )}
       </div>

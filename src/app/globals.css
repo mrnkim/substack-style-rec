@@ -191,6 +191,23 @@ body {
   border: 1px solid rgba(250, 186, 23, 0.25);
 }
 
+/* ── Attribute pills (recommendation explanations) ─── */
+
+.attr-pill {
+  display: inline-block;
+  padding: 1px 8px;
+  font-size: 10px;
+  line-height: 1.6;
+  color: var(--text-secondary);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-default);
+  border-radius: 100px;
+  white-space: nowrap;
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 /* ── Category pills ─── */
 
 .pill-interview { background: rgba(139, 58, 26, 0.3); color: #d4845a; }

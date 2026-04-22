@@ -137,6 +137,7 @@ export default function WatchPage({ params }: { params: Promise<{ id: string }> 
                 <VideoCard
                   video={rec.video}
                   reason={rec.reason}
+                  matchedAttributes={rec.matchedAttributes}
                   source={rec.source}
                   size="sm"
                 />

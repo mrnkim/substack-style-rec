@@ -119,15 +119,26 @@ def _similarity_candidates(
 
 def _matched_attrs(source: dict, target: dict) -> list[str]:
     matched = []
+    # Topic overlap first — most meaningful to users
+    src_topics = set(source.get("topic") or [])
+    tgt_topics = set(target.get("topic") or [])
+    for t in list(src_topics & tgt_topics)[:2]:
+        matched.append(t)
+    # Style / tone as secondary signals
     if source.get("style") and source["style"] == target.get("style"):
-        matched.append(f"{target['style']} format")
+        matched.append(f"{target['style']} style")
     if source.get("tone") and source["tone"] == target.get("tone"):
         matched.append(f"{target['tone']} tone")
-    for t in list((set(source.get("topic") or []) & set(target.get("topic") or [])))[
-        :2
-    ]:
-        matched.append(t)
-    return matched
+    # If no attribute overlap, surface the target's own attributes
+    if not matched:
+        tgt_topic_list = target.get("topic") or []
+        if tgt_topic_list:
+            matched.append(tgt_topic_list[0])
+        elif target.get("style"):
+            matched.append(f"{target['style']} style")
+        if target.get("tone") and len(matched) < 2:
+            matched.append(f"{target['tone']} tone")
+    return matched[:3]
 
 
 def _to_rec(
@@ -137,11 +148,21 @@ def _to_rec(
     rec_source: str,
     subscriptions: set[str],
 ) -> RecommendationResponse:
+    attrs = _matched_attrs(source_video, candidate)
+    # Add contextual signal as last attribute
+    target_creator = candidate.get("creator_id", "")
+    if target_creator in subscriptions:
+        attrs.append("From your subscriptions")
+    elif rec_source == "discovery":
+        creator_name = creators_map.get(target_creator, {}).get("name", "")
+        if creator_name:
+            attrs.append(f"New creator: {creator_name}")
+
     return RecommendationResponse(
         video=_build_video_response(candidate, creators_map),
         score=round(candidate["score"], 4) if candidate.get("score") else None,
         reason=generate_reason(source_video, candidate, rec_source, subscriptions),
-        matched_attributes=_matched_attrs(source_video, candidate),
+        matched_attributes=attrs[:4],
         source=rec_source,
     )
 

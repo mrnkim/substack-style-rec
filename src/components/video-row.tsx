@@ -59,6 +59,7 @@ export function VideoRow({
               key={rec.video.id}
               video={rec.video}
               reason={showReasons ? rec.reason : undefined}
+              matchedAttributes={showReasons ? rec.matchedAttributes : undefined}
               source={showReasons ? rec.source : undefined}
               size={cardSize}
             />

@@ -86,7 +86,13 @@ export async function getForYouRecommendations(
     });
     if (!res.ok) return [];
     const data = await res.json();
-    return data.recommendations ?? [];
+    const recs = (data.recommendations ?? []) as Recommendation[];
+    console.group("%c[For You] %d recommendations", "color:#00DC82;font-weight:bold", recs.length);
+    recs.forEach((r, i) =>
+      console.log(`#${i + 1} [${r.source}] score=${r.score?.toFixed(4) ?? "N/A"} | ${r.video.creator.name} — ${r.video.title}`)
+    );
+    console.groupEnd();
+    return recs;
   } catch {
     return [];
   }
@@ -105,7 +111,13 @@ export async function getSimilarVideos(
     });
     if (!res.ok) return [];
     const data = await res.json();
-    return data.recommendations ?? [];
+    const recs = (data.recommendations ?? []) as Recommendation[];
+    console.group("%c[Similar] %d recommendations", "color:#6CD5FD;font-weight:bold", recs.length);
+    recs.forEach((r, i) =>
+      console.log(`#${i + 1} [${r.source}] score=${r.score?.toFixed(4) ?? "N/A"} | ${r.video.creator.name} — ${r.video.title}`)
+    );
+    console.groupEnd();
+    return recs;
   } catch {
     return [];
   }
