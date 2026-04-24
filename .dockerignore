@@ -1,0 +1,27 @@
+# Frontend — not needed in the backend image
+src
+public
+node_modules
+.next
+package.json
+package-lock.json
+tsconfig.json
+eslint.config.mjs
+postcss.config.mjs
+next.config.ts
+
+# Backend local data
+backend/.venv
+backend/data
+backend/video_files
+backend/logs
+backend/__pycache__
+
+# Docs & config not needed at runtime
+docs
+.claude
+.git
+.gitignore
+.vercelignore
+*.md
+render.yaml

@@ -14,7 +14,6 @@ services:
   - type: web
     name: substack-rec-api
     runtime: docker
-    rootDir: backend
     dockerfilePath: ./Dockerfile
     plan: starter                # Disks require Starter or higher.
     region: oregon               # Match your Vercel region if latency matters.

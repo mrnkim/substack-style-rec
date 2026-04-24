@@ -16,17 +16,32 @@ RUN pip install --no-cache-dir uv
 WORKDIR /app
 
 # Dependency layer — cached unless pyproject/uv.lock change
-COPY pyproject.toml uv.lock ./
+COPY backend/pyproject.toml backend/uv.lock ./
 RUN uv sync --frozen --no-dev
 
-# App code
-COPY . .
+# Backend code
+COPY backend/ .
+
+# scripts/ lives at the repo root; download_videos.py expects it at ../scripts/
+COPY scripts/ /scripts/
 
 # Pixeltable data lives on a mounted disk in production.
-# Override in the host (Render Disk / Fly Volume / docker run -v ...).
 ENV PIXELTABLE_HOME=/var/pixeltable
 
 EXPOSE 8000
 
-# PORT is injected by Render. Fall back to 8000 for local `docker run`.
-CMD ["sh", "-c", "uv run uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000} --proxy-headers"]
+# Render disk mounts can have permissions that Postgres rejects (needs 0700).
+# Fix pgdata permissions on every boot so redeployed containers don't crash.
+COPY <<'EOF' /app/entrypoint.sh
+#!/bin/sh
+set -e
+PGDATA="${PIXELTABLE_HOME:-/var/pixeltable}/pgdata"
+if [ -d "$PGDATA" ]; then
+  chmod 700 "$PGDATA"
+  rm -f "$PGDATA/postmaster.pid"
+fi
+exec uv run uvicorn main:app --host 0.0.0.0 --port "${PORT:-8000}" --proxy-headers
+EOF
+RUN chmod +x /app/entrypoint.sh
+
+CMD ["/app/entrypoint.sh"]
