@@ -102,6 +102,7 @@ def _tl_search(query: str, limit: int = 10) -> list[SearchResultItem] | None:
             score=score,
             scene_start=round(clip.get("start", 0.0), 2),
             scene_end=round(clip.get("end", 0.0), 2),
+            scene_thumbnail_url=clip.get("thumbnail_url"),
         ))
 
     logger.info("  [TL Search API] %d results with timestamps", len(results))

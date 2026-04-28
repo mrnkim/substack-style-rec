@@ -7,6 +7,7 @@ import { formatDuration } from "@/lib/utils";
 interface VideoCardProps {
   video: Video;
   href?: string;
+  thumbnailOverride?: string;
   reason?: string;
   matchedAttributes?: string[];
   source?: "subscription" | "discovery";
@@ -23,19 +24,21 @@ const sizeStyles = {
 export function VideoCard({
   video,
   href,
+  thumbnailOverride,
   reason,
   matchedAttributes,
   source,
   showCreator = true,
   size = "md",
 }: VideoCardProps) {
+  const thumbnail = thumbnailOverride || video.thumbnailUrl;
   return (
     <Link href={href ?? `/watch/${video.id}`} className={`video-card block ${sizeStyles[size]} group`}>
       {/* Thumbnail */}
       <div className="relative aspect-video rounded-lg overflow-hidden bg-[var(--bg-elevated)]">
-        {video.thumbnailUrl ? (
+        {thumbnail ? (
           <img
-            src={video.thumbnailUrl}
+            src={thumbnail}
             alt={video.title}
             className="absolute inset-0 w-full h-full object-cover"
             loading="lazy"

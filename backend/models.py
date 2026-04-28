@@ -124,6 +124,7 @@ class SearchResultItem(BaseModel):
     score: float
     scene_start: float | None = None
     scene_end: float | None = None
+    scene_thumbnail_url: str | None = None
 
 
 class SearchResponse(BaseModel):

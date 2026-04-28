@@ -1,6 +1,7 @@
 "use client";
 
 import { useSearchParams } from "next/navigation";
+import Link from "next/link";
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { getVideos, searchVideos, searchByFile } from "@/lib/api";
 import type { SearchResult } from "@/lib/api";
@@ -319,25 +320,62 @@ function SearchResults() {
             </p>
             {results && results.length > 0 ? (
               <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-5 stagger">
-                {results.map((r) => {
+                {results.map((r, idx) => {
                   const hasScene = r.scene_start != null && r.scene_end != null;
                   const href = hasScene
                     ? `/watch/${r.video.id}?t=${Math.floor(r.scene_start!)}`
                     : `/watch/${r.video.id}`;
+                  const thumbnail = r.scene_thumbnail_url || r.video.thumbnailUrl;
                   return (
-                    <div key={r.video.id} className="animate-fade-up">
-                      <VideoCard video={r.video} href={href} />
-                      {hasScene && (
-                        <div className="mt-1.5 flex items-center gap-1.5">
-                          <span className="inline-block px-1.5 py-0.5 text-[9px] font-semibold rounded-sm uppercase tracking-wider bg-[var(--accent-muted)] text-[var(--accent)] border border-[var(--border-accent)]">
-                            Scene
-                          </span>
-                          <span className="text-[11px] text-[var(--text-tertiary)]">
-                            {formatDuration(Math.floor(r.scene_start!))} – {formatDuration(Math.floor(r.scene_end!))}
+                    <Link key={r.video.id} href={href} className="video-card block animate-fade-up group">
+                      {/* Thumbnail */}
+                      <div className="relative aspect-video rounded-lg overflow-hidden bg-[var(--bg-elevated)]">
+                        <img
+                          src={thumbnail}
+                          alt={r.video.title}
+                          className="absolute inset-0 w-full h-full object-cover"
+                          loading="lazy"
+                        />
+                        {/* Rank badge */}
+                        <span className="absolute top-2 left-2 w-6 h-6 flex items-center justify-center text-[11px] font-bold rounded-md bg-black/70 text-[var(--text-primary)]">
+                          {idx + 1}
+                        </span>
+                        {/* Category pill — shown below with title */}
+                        {/* Scene duration or total duration */}
+                        <span className="absolute bottom-2 right-2 px-1.5 py-0.5 text-[10px] font-mono font-medium bg-black/70 text-[var(--text-primary)] rounded">
+                          {hasScene
+                            ? `${formatDuration(Math.floor(r.scene_start!))} – ${formatDuration(Math.floor(r.scene_end!))}`
+                            : formatDuration(r.video.duration)}
+                        </span>
+                        {/* Play overlay */}
+                        <div className="thumb-overlay rounded-lg">
+                          <div className="w-10 h-10 rounded-full bg-[var(--accent)] flex items-center justify-center shadow-lg">
+                            <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                              <path d="M4 2L14 8L4 14V2Z" fill="#1D1C1B" />
+                            </svg>
+                          </div>
+                        </div>
+                      </div>
+                      {/* Info */}
+                      <div className="mt-2.5 space-y-1">
+                        <div className="flex items-start gap-1.5">
+                          <h3 className="text-sm font-medium text-[var(--text-primary)] leading-snug line-clamp-2 group-hover:text-[var(--accent)] transition-colors flex-1">
+                            {r.video.title}
+                          </h3>
+                          <span className={`shrink-0 mt-0.5 px-2 py-0.5 text-[10px] font-medium rounded-full pill-${r.video.category}`}>
+                            {r.video.category}
                           </span>
                         </div>
-                      )}
-                    </div>
+                        <div className="flex items-center gap-1.5">
+                          <div className="w-4 h-4 rounded-full bg-[var(--bg-elevated)] flex items-center justify-center">
+                            <span className="text-[8px] font-bold text-[var(--text-tertiary)]">
+                              {r.video.creator.name[0]}
+                            </span>
+                          </div>
+                          <span className="text-xs text-[var(--text-secondary)]">{r.video.creator.name}</span>
+                        </div>
+                      </div>
+                    </Link>
                   );
                 })}
               </div>
