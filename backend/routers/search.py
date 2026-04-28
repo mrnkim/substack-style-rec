@@ -1,8 +1,7 @@
-"""Semantic video search via Pixeltable .similarity().
+"""Semantic video search.
 
-Queries go through the video_scenes view (scene-detect + Marengo 3.0
-segment embeddings) for content-based search. Falls back to title
-embeddings when scenes are unavailable.
+Prefers Twelve Labs Search API (returns scene-level timestamps).
+Falls back to Pixeltable scene similarity or title embeddings.
 """
 
 import logging
@@ -10,6 +9,7 @@ import shutil
 import tempfile
 from pathlib import Path
 
+import httpx
 from fastapi import APIRouter, File, Form, Query, UploadFile
 import pixeltable as pxt
 
@@ -42,6 +42,70 @@ MIME_TO_MODALITY = {
     "audio/wav": "audio",
     "audio/webm": "audio",
 }
+
+
+def _tl_search(query: str, limit: int = 10) -> list[SearchResultItem] | None:
+    """Call Twelve Labs Search API directly — returns results with scene timestamps."""
+    if not config.TWELVELABS_API_KEY or not config.TWELVELABS_INDEX_ID:
+        return None
+
+    url = f"{config.TWELVELABS_BASE_URL}/search"
+    headers = {"x-api-key": config.TWELVELABS_API_KEY}
+
+    try:
+        resp = httpx.post(
+            url,
+            headers=headers,
+            files={
+                "query_text": (None, query),
+                "index_id": (None, config.TWELVELABS_INDEX_ID),
+                "search_options": (None, "visual"),
+                "page_limit": (None, str(limit)),
+            },
+            timeout=30.0,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+    except Exception as exc:
+        logger.warning("TL Search API failed: %s", exc)
+        return None
+
+    creators_map = _load_creators_map()
+    videos_t = pxt.get_table(f"{config.APP_NAMESPACE}.videos")
+
+    all_rows = list(
+        videos_t.select(
+            videos_t.id, videos_t.title, videos_t.creator_id, videos_t.category,
+            videos_t.duration, videos_t.thumbnail_url, videos_t.hls_url, videos_t.upload_date,
+        ).collect()
+    )
+    by_tl_id = {r["id"]: r for r in all_rows}
+
+    results: list[SearchResultItem] = []
+    seen: set[str] = set()
+    total_clips = len(data.get("data", []))
+    for i, clip in enumerate(data.get("data", [])):
+        vid_id = clip.get("video_id", "")
+        if vid_id in seen:
+            continue
+        seen.add(vid_id)
+
+        row = by_tl_id.get(vid_id)
+        if not row:
+            continue
+
+        # Rank-based score: top result = 1.0, decreasing
+        score = round(1.0 - (i / max(total_clips, 1)) * 0.5, 4)
+
+        results.append(SearchResultItem(
+            video=_build_video_response(row, creators_map),
+            score=score,
+            scene_start=round(clip.get("start", 0.0), 2),
+            scene_end=round(clip.get("end", 0.0), 2),
+        ))
+
+    logger.info("  [TL Search API] %d results with timestamps", len(results))
+    return results if results else None
 
 
 def _format_results(rows, query_label, modality="text"):
@@ -116,6 +180,14 @@ def search_videos(
     limit: int = Query(10, ge=1, le=50),
 ):
     logger.info("search: text q=%r, limit=%d", q, limit)
+
+    # Try TL Search API first (returns scene-level timestamps)
+    if not creator_id:
+        tl_results = _tl_search(q, limit)
+        if tl_results:
+            return SearchResponse(query=q, modality="text", results=tl_results)
+
+    # Fall back to Pixeltable similarity
     videos_t = pxt.get_table(f"{config.APP_NAMESPACE}.videos")
     scenes_t = _get_scenes_table()
     rows = _search(videos_t, scenes_t, q, creator_id, limit)
