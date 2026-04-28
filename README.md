@@ -164,8 +164,8 @@ Pixeltable is **stateful**. It runs an embedded Postgres (`pixeltable_pgserver`)
 
 **Files that ship with the repo:**
 
-- [`backend/Dockerfile`](./backend/Dockerfile) — Python 3.13 + ffmpeg + libgl + `uv`, production `uvicorn` launch, `PIXELTABLE_HOME=/var/pixeltable`.
-- [`backend/.dockerignore`](./backend/.dockerignore) — keeps `video_files/`, `data/`, `logs/`, `.venv/` out of the build context.
+- [`Dockerfile`](./Dockerfile) — Python 3.13 + ffmpeg + libgl + `uv`, production `uvicorn` launch, `PIXELTABLE_HOME=/var/pixeltable`.
+- [`.dockerignore`](./.dockerignore) — keeps frontend, `video_files/`, `data/`, `logs/`, `.venv/` out of the build context.
 - [`render.yaml`](./render.yaml) — web service + 20 GB persistent disk mounted at `/var/pixeltable`, Oregon region, `healthCheckPath: /health`.
 
 **Deploy:**
