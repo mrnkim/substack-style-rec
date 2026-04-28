@@ -11,7 +11,6 @@ dependencies = [
     "python-multipart",
     "twelvelabs",
     "httpx",
-    "yt-dlp",
     "scenedetect>=0.6.7.1",
     "opencv-python-headless>=4.13.0.92",
 ]
