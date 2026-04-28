@@ -2,6 +2,7 @@
 
 import { use, useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { getVideo, getSimilarVideos } from "@/lib/api";
 import { useUserState } from "@/lib/user-state";
 import { SubscribeButton } from "@/components/subscribe-button";
@@ -12,6 +13,8 @@ import type { Video, Recommendation } from "@/lib/types";
 
 export default function WatchPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
+  const searchParams = useSearchParams();
+  const startTime = Number(searchParams.get("t")) || 0;
   const { markWatched, watchHistory } = useUserState();
   const [video, setVideo] = useState<Video | null>(null);
   const [similar, setSimilar] = useState<Recommendation[]>([]);
@@ -62,6 +65,7 @@ export default function WatchPage({ params }: { params: Promise<{ id: string }> 
             thumbnailUrl={video.thumbnailUrl}
             title={video.title}
             duration={video.duration}
+            startTime={startTime}
           />
 
           {/* Video info */}

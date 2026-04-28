@@ -122,6 +122,8 @@ class CreatorCatalogResponse(BaseModel):
 class SearchResultItem(BaseModel):
     video: VideoResponse
     score: float
+    scene_start: float | None = None
+    scene_end: float | None = None
 
 
 class SearchResponse(BaseModel):

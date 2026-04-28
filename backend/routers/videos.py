@@ -77,6 +77,12 @@ def _scene_similarity(
 
     exclude = exclude_ids or set()
     cols = [getattr(scenes_t, f) for f in VIDEO_FIELDS]
+    # Include scene timestamps when available
+    try:
+        cols.extend([scenes_t.segment_start, scenes_t.segment_end])
+        has_timestamps = True
+    except AttributeError:
+        has_timestamps = False
     # Fetch extra scenes before deduping to unique videos; a small multiplier
     # under-fills when a few titles dominate the top-N scenes (hurts recall).
     fetch_mult = 12

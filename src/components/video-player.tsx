@@ -9,11 +9,12 @@ interface VideoPlayerProps {
   thumbnailUrl: string;
   title: string;
   duration: number;
+  startTime?: number;
 }
 
-export function VideoPlayer({ hlsUrl, thumbnailUrl, title, duration }: VideoPlayerProps) {
+export function VideoPlayer({ hlsUrl, thumbnailUrl, title, duration, startTime = 0 }: VideoPlayerProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
-  const [playing, setPlaying] = useState(false);
+  const [playing, setPlaying] = useState(startTime > 0);
   const [error, setError] = useState(false);
 
   useEffect(() => {
@@ -25,9 +26,10 @@ export function VideoPlayer({ hlsUrl, thumbnailUrl, title, duration }: VideoPlay
     if (video.canPlayType("application/vnd.apple.mpegurl")) {
       // Safari — native HLS support
       video.src = hlsUrl;
+      if (startTime > 0) video.currentTime = startTime;
       video.play();
     } else if (Hls.isSupported()) {
-      hls = new Hls();
+      hls = new Hls({ startPosition: startTime > 0 ? startTime : -1 });
       hls.loadSource(hlsUrl);
       hls.attachMedia(video);
       hls.on(Hls.Events.MANIFEST_PARSED, () => video.play());
@@ -41,7 +43,7 @@ export function VideoPlayer({ hlsUrl, thumbnailUrl, title, duration }: VideoPlay
     return () => {
       hls?.destroy();
     };
-  }, [hlsUrl, playing]);
+  }, [hlsUrl, playing, startTime]);
 
   const handlePlay = () => {
     if (!hlsUrl) {

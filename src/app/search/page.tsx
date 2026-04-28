@@ -5,6 +5,7 @@ import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { getVideos, searchVideos, searchByFile } from "@/lib/api";
 import type { SearchResult } from "@/lib/api";
 import { VideoCard } from "@/components/video-card";
+import { formatDuration } from "@/lib/utils";
 import type { Video } from "@/lib/types";
 
 const ACCEPT_TYPES = "image/jpeg,image/png,image/webp,video/mp4,video/webm,audio/mpeg,audio/mp4,audio/wav";
@@ -88,7 +89,8 @@ function SearchResults() {
   const searchParams = useSearchParams();
   const query = searchParams.get("q") || "";
   const [textQuery, setTextQuery] = useState(query);
-  const [videos, setVideos] = useState<Video[] | null>(null);
+  const [results, setResults] = useState<SearchResult[] | null>(null);
+  const [browseVideos, setBrowseVideos] = useState<Video[] | null>(null);
   const [searchLabel, setSearchLabel] = useState(query);
   const [searchMessage, setSearchMessage] = useState<string | null>(null);
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
@@ -104,10 +106,12 @@ function SearchResults() {
     try {
       if (q) {
         const data = await searchVideos(q, { limit: 20 });
-        setVideos(data.results.map((r: SearchResult) => r.video));
+        setResults(data.results);
+        setBrowseVideos(null);
       } else {
         const v = await getVideos();
-        setVideos(v);
+        setBrowseVideos(v);
+        setResults(null);
       }
     } finally {
       setIsSearching(false);
@@ -120,7 +124,8 @@ function SearchResults() {
     setSearchMessage(null);
     try {
       const data = await searchByFile(file, { limit: 20 });
-      setVideos(data.results.map((r: SearchResult) => r.video));
+      setResults(data.results);
+      setBrowseVideos(null);
       setSearchLabel(data.query || file.name);
       if (data.message) setSearchMessage(data.message);
     } finally {
@@ -159,6 +164,7 @@ function SearchResults() {
   const handleRemoveFile = () => {
     setUploadedFile(null);
     setSearchLabel("");
+    setResults(null);
     doTextSearch(query);
   };
 
@@ -184,6 +190,7 @@ function SearchResults() {
   };
 
   const topics = ["AI", "music", "interview", "branding", "mathematics", "creator economy"];
+  const videos = results ? results.map((r) => r.video) : browseVideos;
   const loading = videos === null && !isSearching;
   const hasQuery = !!query || !!uploadedFile;
 
@@ -310,13 +317,29 @@ function SearchResults() {
                 </>
               )}
             </p>
-            {videos.length > 0 ? (
+            {results && results.length > 0 ? (
               <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-5 stagger">
-                {videos.map((video) => (
-                  <div key={video.id} className="animate-fade-up">
-                    <VideoCard video={video} />
-                  </div>
-                ))}
+                {results.map((r) => {
+                  const hasScene = r.scene_start != null && r.scene_end != null;
+                  const href = hasScene
+                    ? `/watch/${r.video.id}?t=${Math.floor(r.scene_start!)}`
+                    : `/watch/${r.video.id}`;
+                  return (
+                    <div key={r.video.id} className="animate-fade-up">
+                      <VideoCard video={r.video} href={href} />
+                      {hasScene && (
+                        <div className="mt-1.5 flex items-center gap-1.5">
+                          <span className="inline-block px-1.5 py-0.5 text-[9px] font-semibold rounded-sm uppercase tracking-wider bg-[var(--accent-muted)] text-[var(--accent)] border border-[var(--border-accent)]">
+                            Scene
+                          </span>
+                          <span className="text-[11px] text-[var(--text-tertiary)]">
+                            {formatDuration(Math.floor(r.scene_start!))} – {formatDuration(Math.floor(r.scene_end!))}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             ) : (
               <div className="py-20 text-center">

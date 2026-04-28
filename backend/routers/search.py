@@ -51,6 +51,8 @@ def _format_results(rows, query_label, modality="text"):
         SearchResultItem(
             video=_build_video_response(row, creators_map),
             score=round(row.get("score") or 0.0, 4),
+            scene_start=round(row["segment_start"], 2) if row.get("segment_start") is not None else None,
+            scene_end=round(row["segment_end"], 2) if row.get("segment_end") is not None else None,
         )
         for row in rows
     ]
