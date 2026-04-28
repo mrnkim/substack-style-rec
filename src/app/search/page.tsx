@@ -196,97 +196,55 @@ function SearchResults() {
   const hasQuery = !!query || !!uploadedFile;
 
   return (
-    <div
-      className="pb-16 animate-fade-up"
-      onDragEnter={handleDragEnter}
-      onDragLeave={handleDragLeave}
-      onDragOver={handleDragOver}
-      onDrop={handleDrop}
-    >
-      {/* Drag overlay */}
-      {isDragging && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
-          <div className="flex flex-col items-center gap-4 p-12 border-2 border-dashed border-[var(--accent)] rounded-2xl bg-[var(--bg-card)]/80">
-            <div className="text-[var(--accent)]">
-              <svg className="w-12 h-12" viewBox="0 0 24 24" fill="none">
-                <path d="M12 16V4m0 0l-4 4m4-4l4 4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                <path d="M20 16v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-              </svg>
-            </div>
-            <p className="text-lg font-medium text-[var(--text-primary)]">Drop to search</p>
-            <p className="text-sm text-[var(--text-secondary)]">Image, video clip, or audio file</p>
-          </div>
-        </div>
-      )}
-
+    <div className="pb-16 animate-fade-up">
       <div className="px-8 pt-10 pb-6">
         <h1 className="text-3xl font-bold text-[var(--text-primary)] font-[family-name:var(--font-brand)] mb-2">
           Search
         </h1>
         <p className="text-sm text-[var(--text-secondary)] mb-6">
-          Search by text, or upload an image, video clip, or audio file for cross-modal search
+          Search videos by content using Twelve Labs semantic search
         </p>
 
-        {/* Search input row */}
+        {/* Search input */}
         <div className="max-w-2xl">
-          {uploadedFile ? (
-            <FilePreview file={uploadedFile} onRemove={handleRemoveFile} />
-          ) : (
-            <form onSubmit={handleTextSubmit} className="relative">
-              <div className="relative flex items-center gap-2">
-                <div className="relative flex-1">
-                  <svg
-                    className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-tertiary)] w-5 h-5"
-                    viewBox="0 0 16 16"
-                    fill="none"
-                  >
-                    <circle cx="7" cy="7" r="5.5" stroke="currentColor" strokeWidth="1.5" />
-                    <path d="M11 11L14.5 14.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+          <form onSubmit={handleTextSubmit} className="relative">
+            <div className="relative flex-1">
+              <svg
+                className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-tertiary)] w-5 h-5"
+                viewBox="0 0 16 16"
+                fill="none"
+              >
+                <circle cx="7" cy="7" r="5.5" stroke="currentColor" strokeWidth="1.5" />
+                <path d="M11 11L14.5 14.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+              </svg>
+              <input
+                type="text"
+                value={textQuery}
+                onChange={(e) => setTextQuery(e.target.value)}
+                placeholder="Search videos by content..."
+                autoFocus
+                className="w-full bg-[var(--bg-card)] border border-[var(--border-default)] text-[var(--text-primary)] placeholder:text-[var(--text-tertiary)] rounded-lg outline-none transition-all focus:border-[var(--accent)]/50 focus:ring-1 focus:ring-[var(--accent)]/20 pl-11 pr-10 py-3 text-base"
+              />
+              {textQuery && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setTextQuery("");
+                    setResults(null);
+                    setSearchLabel("");
+                    window.history.pushState({}, "", "/search");
+                    doTextSearch("");
+                  }}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--text-tertiary)] hover:text-[var(--text-primary)] transition-colors cursor-pointer"
+                  aria-label="Clear search"
+                >
+                  <svg className="w-4 h-4" viewBox="0 0 16 16" fill="none">
+                    <path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
                   </svg>
-                  <input
-                    type="text"
-                    value={textQuery}
-                    onChange={(e) => setTextQuery(e.target.value)}
-                    placeholder="Search videos by content..."
-                    autoFocus
-                    className="w-full bg-[var(--bg-card)] border border-[var(--border-default)] text-[var(--text-primary)] placeholder:text-[var(--text-tertiary)] rounded-lg outline-none transition-all focus:border-[var(--accent)]/50 focus:ring-1 focus:ring-[var(--accent)]/20 pl-11 pr-4 py-3 text-base"
-                  />
-                </div>
-
-                {/* Upload buttons */}
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept={ACCEPT_TYPES}
-                  onChange={handleFileInputChange}
-                  className="hidden"
-                />
-                <div className="flex items-center gap-1">
-                  {(["image", "video", "audio"] as const).map((mod) => (
-                    <button
-                      key={mod}
-                      type="button"
-                      onClick={() => {
-                        if (fileInputRef.current) {
-                          fileInputRef.current.accept =
-                            mod === "image"
-                              ? "image/jpeg,image/png,image/webp"
-                              : mod === "video"
-                                ? "video/mp4,video/webm"
-                                : "audio/mpeg,audio/mp4,audio/wav";
-                          fileInputRef.current.click();
-                        }
-                      }}
-                      title={`Search by ${mod}`}
-                      className="p-2.5 rounded-lg border border-[var(--border-default)] bg-[var(--bg-card)] text-[var(--text-tertiary)] hover:text-[var(--accent)] hover:border-[var(--accent)]/30 transition-all"
-                    >
-                      {modalityIcon(mod)}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </form>
-          )}
+                </button>
+              )}
+            </div>
+          </form>
         </div>
       </div>
 
@@ -392,22 +350,6 @@ function SearchResults() {
         {/* Empty state: topic pills + browse all */}
         {!loading && !isSearching && videos && !hasQuery && (
           <>
-            {/* Multimodal hint */}
-            <div className="mb-8 p-4 rounded-xl border border-[var(--border-default)] bg-[var(--bg-card)]">
-              <h3 className="text-sm font-semibold text-[var(--text-primary)] mb-2 flex items-center gap-2">
-                <span className="text-[var(--accent)]">
-                  <svg className="w-4 h-4" viewBox="0 0 16 16" fill="none">
-                    <path d="M8 1l2 5h5l-4 3 1.5 5L8 11l-4.5 3L5 9 1 6h5l2-5z" fill="currentColor" />
-                  </svg>
-                </span>
-                Cross-Modal Search
-              </h3>
-              <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
-                Upload an image, short video clip, or audio file to find videos with matching content.
-                Powered by Twelve Labs Marengo 3.0 + Pixeltable scene detection — all modalities share the same embedding space.
-              </p>
-            </div>
-
             <div className="mb-8">
               <h2 className="text-sm font-semibold text-[var(--text-secondary)] uppercase tracking-wider mb-3">
                 Popular Topics
