@@ -11,14 +11,10 @@ interface UserStateContextValue extends UserState {
   reset: () => void;
 }
 
-const STORAGE_KEY = "curatorai-user-state";
+const STORAGE_KEY = "curatorai-user-state-v2";
 
 const defaultState: UserState = {
-  subscriptions: [
-    "UCPD_bxCRGpmmeQcbe2kpPaA", // First We Feast
-    "UCamLstJyCa-t5gfZegxsFMw", // Colin and Samir
-    "UCLXo7UDZvByw2ixzpQCufnA", // Vox
-  ],
+  subscriptions: [],
   watchHistory: [],
 };
 
