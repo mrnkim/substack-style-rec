@@ -19,7 +19,9 @@ import sys
 from pathlib import Path
 from urllib.parse import quote
 
-import yt_dlp
+# yt-dlp is only needed for the YouTube path (local development).
+# We import it lazily inside _download_youtube() so cloud images that don't
+# ship yt-dlp (e.g., the Render container) can still run with --r2.
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
@@ -45,6 +47,15 @@ YDL_OPTS = {
 
 
 def _download_youtube(youtube_id: str, output_dir: Path) -> Path | None:
+    try:
+        import yt_dlp
+    except ImportError:
+        logger.error(
+            "yt_dlp is not installed in this environment. Use --r2 on cloud "
+            "hosts where yt-dlp is unavailable, or install yt-dlp locally."
+        )
+        sys.exit(1)
+
     output_path = output_dir / f"{youtube_id}.mp4"
     if output_path.exists() and output_path.stat().st_size > 0:
         logger.info("  Already downloaded: %s", output_path.name)
