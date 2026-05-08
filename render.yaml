@@ -32,6 +32,8 @@ services:
         value: 69c37b6708cd679f8afbd748
       - key: PIXELTABLE_HOME
         value: /var/pixeltable
+      - key: VIDEO_FILES_DIR
+        value: /var/pixeltable/video_files   # Persist source mp4s across restarts.
       - key: CORS_ORIGINS
         sync: false              # e.g. https://substack-style-rec.vercel.app
                                  # (Vercel preview URLs are already covered by

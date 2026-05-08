@@ -30,8 +30,12 @@ logger = logging.getLogger(__name__)
 
 QUICK_YOUTUBE_IDS = {"sO4te2QNsHY", "ntPGl8UyIq4", "QpKypvDjiPM"}
 
+import os
+
 SCRIPT_DIR = Path(__file__).resolve().parent
-DOWNLOAD_DIR = SCRIPT_DIR / "video_files"
+# VIDEO_FILES_DIR can be overridden via env (e.g. /var/pixeltable/video_files
+# on Render so files survive container restarts). Defaults to local repo dir.
+DOWNLOAD_DIR = Path(os.environ.get("VIDEO_FILES_DIR", SCRIPT_DIR / "video_files"))
 VIDEOS_CSV = SCRIPT_DIR.parent / "scripts" / "videos_metadata.csv"
 
 # ---------------------------------------------------------------------------

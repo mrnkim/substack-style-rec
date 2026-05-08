@@ -20,6 +20,7 @@ Usage:
 
 import argparse
 import logging
+import os
 import re
 from pathlib import Path
 
@@ -38,7 +39,11 @@ QUICK_YOUTUBE_IDS = {"sO4te2QNsHY", "ntPGl8UyIq4", "QpKypvDjiPM"}
 
 marengo = embed.using(model_name="marengo3.0")
 
-VIDEO_FILES_DIR = Path(__file__).resolve().parent / "video_files"
+# Override via VIDEO_FILES_DIR env (e.g. /var/pixeltable/video_files on Render
+# so source files persist across container restarts).
+VIDEO_FILES_DIR = Path(
+    os.environ.get("VIDEO_FILES_DIR", Path(__file__).resolve().parent / "video_files")
+)
 
 
 def strip_extension(filename: str) -> str:
