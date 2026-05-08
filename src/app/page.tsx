@@ -61,7 +61,12 @@ export default function HomePage() {
     );
   }
 
-  const featured = forYou[0]?.video ?? videos[0];
+  // Hero is the top For You pick. We deliberately do NOT fall back to
+  // videos[0] while For You is still fetching — that would briefly stamp
+  // an arbitrary first-row video (e.g. whatever Pixeltable returns first)
+  // as the featured pick, which felt "stuck" across navigations.
+  const featured = forYou[0]?.video;
+  const featuredLoading = forYou.length === 0;
 
   // Continue watching
   const continueWatching: Recommendation[] = watchHistory
@@ -90,7 +95,13 @@ export default function HomePage() {
 
   return (
     <div className="pb-16">
-      {featured && <HeroFeature video={featured} />}
+      {featured ? (
+        <HeroFeature video={featured} />
+      ) : featuredLoading ? (
+        <div className="relative w-full h-[65vh] min-h-[400px] max-h-[600px] bg-[var(--bg-card)] flex items-center justify-center">
+          <div className="w-8 h-8 border-2 border-[var(--accent)] border-t-transparent rounded-full animate-spin" />
+        </div>
+      ) : null}
 
       <div className="space-y-10 mt-8">
         <VideoRow
