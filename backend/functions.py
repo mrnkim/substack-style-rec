@@ -91,18 +91,26 @@ def generate_reason(
     target_video: dict,
     rec_source: str,
     subscriptions: set[str],
+    context: str = "similar",
 ) -> str:
-    """Generate a short, human-readable reason for a recommendation."""
+    """Generate a short, human-readable reason for a recommendation.
+
+    context: "similar" when the source is the currently-playing video (watch
+    page sidebar); "for_you" when the source is drawn from watch history
+    (home feed).
+    """
     source_title = source_video.get("title", "")
     target_creator = target_video.get("creator_id", "")
 
     if source_title:
-        reason = f"Because you watched '{source_title}'"
-    elif target_creator in subscriptions:
-        reason = "From a creator you follow"
-    elif rec_source == "discovery":
-        reason = "Discover something new"
-    else:
-        reason = "Recommended for you"
-
-    return reason
+        anchor = (
+            "the current video" if context == "similar" else "videos you've watched"
+        )
+        return (
+            f"Recommended because it shares visual elements and scenes with {anchor}."
+        )
+    if target_creator in subscriptions:
+        return "From a creator you follow."
+    if rec_source == "discovery":
+        return "A new creator that matches your taste."
+    return "Recommended based on your watch history."

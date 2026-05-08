@@ -1,8 +1,14 @@
-"""Recommendation endpoints: for-you, similar, creator-catalog."""
+"""Recommendation endpoints: for-you, similar, creator-catalog.
+
+Recommendations are content-based, driven by Marengo scene embeddings stored
+in the `scene_marengo` index. For each reference (watched) video we read its
+stored scene vectors directly — no re-embedding — and run nearest-neighbor
+queries against the same index. Per-target-video score = max similarity
+across all (ref scene, target scene) pairs.
+"""
 
 import logging
 from collections import defaultdict
-from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
 import pixeltable as pxt
@@ -22,7 +28,8 @@ from routers.videos import (
     _build_video_response,
     _get_scenes_table,
     _load_creators_map,
-    _scene_similarity,
+    _scene_embeddings_for_video,
+    _scene_vector_similarity,
     _select_videos,
     _title_similarity,
 )
@@ -43,46 +50,6 @@ def _apply_diversity(candidates: list[dict], max_per_creator: int = 2) -> list[d
     return result
 
 
-def _sim_kwargs_from_ref(ref: dict) -> dict:
-    """Prefer full-file video query when local file exists and is under TL embed size cap; else title."""
-    path = ref.get("_video_path") or ref.get("video")
-    if path and str(path).strip():
-        p = Path(str(path))
-        try:
-            if p.is_file():
-                size = p.stat().st_size
-                if size <= config.TWELVELABS_EMBED_VIDEO_MAX_BYTES:
-                    return {"video": str(p)}
-                logger.info(
-                    "  skip video= query (%.1f MB > embed cap); using title",
-                    size / (1024 * 1024),
-                )
-        except OSError:
-            pass
-    title = (ref.get("title") or "").strip()
-    return {"string": title if title else "untitled"}
-
-
-def _enrich_video_paths(rows: list[dict], videos_t) -> None:
-    """Attach _video_path from the videos table for scene similarity(video=...)."""
-    if not rows:
-        return
-    ids = [r["id"] for r in rows if r.get("id")]
-    if not ids:
-        return
-    try:
-        pmap = {
-            r["id"]: r.get("video")
-            for r in videos_t.where(videos_t.id.isin(ids))
-            .select(videos_t.id, videos_t.video)
-            .collect()
-        }
-    except Exception:
-        return
-    for r in rows:
-        r["_video_path"] = pmap.get(r["id"])
-
-
 def _similarity_candidates(
     videos_t,
     ref: dict,
@@ -90,55 +57,84 @@ def _similarity_candidates(
     limit: int,
     creator_id: str | None = None,
 ) -> list[dict]:
-    """Query Marengo on video_scenes; use similarity(video=path) when available, else string=title."""
+    """Find videos similar to `ref` using its stored scene embeddings.
+
+    For each scene of the reference video, runs a nearest-neighbor query over
+    the `scene_marengo` index. Results are aggregated per target video, keeping
+    the row with the highest similarity score across any (ref scene, target
+    scene) pair. Always excludes the reference video itself.
+
+    Falls back to title-text similarity only if the scene index or the
+    reference's stored embeddings are unavailable (e.g., scene detection failed
+    for that video).
+    """
     scenes_t = _get_scenes_table()
-    sim_kw = _sim_kwargs_from_ref(ref)
+    ref_id = ref.get("id")
+    exclude_with_self = set(exclude_ids) | ({ref_id} if ref_id else set())
+
+    if scenes_t is not None and ref_id:
+        ref_embs = _scene_embeddings_for_video(scenes_t, ref_id)
+        if ref_embs:
+            best: dict[str, dict] = {}
+            for vec in ref_embs:
+                try:
+                    rows = _scene_vector_similarity(
+                        scenes_t, vec, exclude_with_self, limit, creator_id
+                    )
+                except Exception as exc:
+                    logger.warning("vector similarity failed (%s)", exc)
+                    continue
+                for r in rows:
+                    vid = r["id"]
+                    score = r.get("score") or 0.0
+                    prev = best.get(vid)
+                    if prev is None or score > (prev.get("score") or 0.0):
+                        best[vid] = r
+            ranked = sorted(
+                best.values(), key=lambda x: x.get("score", 0), reverse=True
+            )
+            if ranked:
+                logger.info(
+                    "  [scene index] %d ref scenes → %d candidates",
+                    len(ref_embs), len(ranked),
+                )
+                return ranked[:limit]
+
     title_fallback = (ref.get("title") or "untitled").strip()
-
-    if scenes_t is not None:
-        try:
-            rows = _scene_similarity(scenes_t, exclude_ids, limit, creator_id, **sim_kw)
-            if rows:
-                if "video" in sim_kw:
-                    logger.info("  [scene index] query=video file (content-to-content)")
-                else:
-                    logger.info("  [scene index] query=title text")
-                return rows
-        except Exception as exc:
-            logger.warning("scene similarity failed (%s), falling back to title", exc)
-
-    logger.info("  [title fallback] using title similarity")
+    logger.info("  [title fallback] no stored scene embeddings for ref; using title")
     try:
         return _title_similarity(
-            videos_t, title_fallback, exclude_ids, limit, creator_id
+            videos_t, title_fallback, exclude_with_self, limit, creator_id
         )
     except Exception as exc:
         logger.warning("title similarity failed (%s); empty candidates", exc)
         return []
 
 
-def _matched_attrs(source: dict, target: dict) -> list[str]:
-    matched = []
-    # Topic overlap first — most meaningful to users
+def _shared_attrs(source: dict, target: dict) -> list[str]:
+    """Return ONLY topic/style/tone values genuinely shared between source and
+    target. May be empty if there is no overlap."""
+    matched: list[str] = []
     src_topics = set(source.get("topic") or [])
     tgt_topics = set(target.get("topic") or [])
-    for t in list(src_topics & tgt_topics)[:2]:
-        matched.append(t)
-    # Style / tone as secondary signals
+    matched.extend(list(src_topics & tgt_topics)[:2])
     if source.get("style") and source["style"] == target.get("style"):
         matched.append(f"{target['style']} style")
     if source.get("tone") and source["tone"] == target.get("tone"):
         matched.append(f"{target['tone']} tone")
-    # If no attribute overlap, surface the target's own attributes
-    if not matched:
-        tgt_topic_list = target.get("topic") or []
-        if tgt_topic_list:
-            matched.append(tgt_topic_list[0])
-        elif target.get("style"):
-            matched.append(f"{target['style']} style")
-        if target.get("tone") and len(matched) < 2:
-            matched.append(f"{target['tone']} tone")
     return matched[:3]
+
+
+def _target_tags(target: dict) -> list[str]:
+    """Surface the target video's own topic/style/tone as a fallback display
+    when no shared attributes exist."""
+    tags: list[str] = []
+    tags.extend((target.get("topic") or [])[:2])
+    if target.get("style"):
+        tags.append(f"{target['style']} style")
+    if target.get("tone"):
+        tags.append(f"{target['tone']} tone")
+    return tags[:3]
 
 
 def _to_rec(
@@ -147,22 +143,30 @@ def _to_rec(
     source_video: dict,
     rec_source: str,
     subscriptions: set[str],
+    context: str = "similar",
 ) -> RecommendationResponse:
-    attrs = _matched_attrs(source_video, candidate)
-    # Add contextual signal as last attribute
+    shared = _shared_attrs(source_video, candidate)
+    # Only surface target's own tags as a fallback when there is no real overlap
+    fallback_tags = _target_tags(candidate) if not shared else []
+
     target_creator = candidate.get("creator_id", "")
+    context_tag: str | None = None
     if target_creator in subscriptions:
-        attrs.append("From your subscriptions")
+        context_tag = "From your subscriptions"
     elif rec_source == "discovery":
         creator_name = creators_map.get(target_creator, {}).get("name", "")
         if creator_name:
-            attrs.append(f"New creator: {creator_name}")
+            context_tag = f"New creator: {creator_name}"
 
     return RecommendationResponse(
         video=_build_video_response(candidate, creators_map),
         score=round(candidate["score"], 4) if candidate.get("score") else None,
-        reason=generate_reason(source_video, candidate, rec_source, subscriptions),
-        matched_attributes=attrs[:4],
+        reason=generate_reason(
+            source_video, candidate, rec_source, subscriptions, context
+        ),
+        matched_attributes=shared,
+        video_tags=fallback_tags,
+        context_tag=context_tag,
         source=rec_source,
     )
 
@@ -226,7 +230,6 @@ def for_you(body: ForYouRequest):
     # Standard flow: Marengo similarity from watch history
     all_rows = list(_select_videos(videos_t).collect())
     _attach_attrs(all_rows, videos_t)
-    _enrich_video_paths(all_rows, videos_t)
     by_id = {v["id"]: v for v in all_rows}
 
     # If user has watched (almost) everything, don't exclude — just deprioritize
@@ -271,11 +274,23 @@ def for_you(body: ForYouRequest):
 
     recs = [
         _to_rec(
-            c, creators_map, c.get("_source_video", {}), "subscription", subscriptions
+            c,
+            creators_map,
+            c.get("_source_video", {}),
+            "subscription",
+            subscriptions,
+            context="for_you",
         )
         for c in final_sub
     ] + [
-        _to_rec(c, creators_map, c.get("_source_video", {}), "discovery", subscriptions)
+        _to_rec(
+            c,
+            creators_map,
+            c.get("_source_video", {}),
+            "discovery",
+            subscriptions,
+            context="for_you",
+        )
         for c in final_disc
     ]
     final = recs[: body.limit]
@@ -311,7 +326,6 @@ def similar(body: SimilarRequest):
         raise HTTPException(status_code=404, detail="Video not found")
 
     _attach_attrs(ref_rows, videos_t)
-    _enrich_video_paths(ref_rows, videos_t)
     ref = ref_rows[0]
     total_videos = videos_t.count()
     watched_plus_current = set(body.watch_history) | {body.video_id}
@@ -399,7 +413,6 @@ def creator_catalog(body: CreatorCatalogRequest):
     if body.watch_history:
         all_rows = list(_select_videos(videos_t).collect())
         _attach_attrs(all_rows, videos_t)
-        _enrich_video_paths(all_rows, videos_t)
         watched_by_id = {
             v["id"]: v for v in all_rows if v["id"] in set(body.watch_history)
         }

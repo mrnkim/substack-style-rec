@@ -195,15 +195,16 @@ body {
 
 .attr-pill {
   display: inline-block;
-  padding: 1px 8px;
-  font-size: 10px;
-  line-height: 1.6;
-  color: var(--text-secondary);
-  background: var(--bg-elevated);
-  border: 1px solid var(--border-default);
+  padding: 2.5px 10px;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.5;
+  color: var(--text-primary);
+  background: rgba(244, 243, 243, 0.06);
+  border: 1px solid var(--border-accent);
   border-radius: 100px;
   white-space: nowrap;
-  max-width: 200px;
+  max-width: 220px;
   overflow: hidden;
   text-overflow: ellipsis;
 }

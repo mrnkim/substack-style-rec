@@ -2,7 +2,8 @@
 
 Also exports shared helpers used by other routers:
     VIDEO_FIELDS, _select_videos, _attach_attrs, _build_video_response,
-    _load_creators_map, _get_scenes_table, _scene_similarity, _title_similarity
+    _load_creators_map, _get_scenes_table, _scene_similarity, _title_similarity,
+    _scene_embeddings_for_video, _scene_vector_similarity
 """
 
 import logging
@@ -32,6 +33,8 @@ VIDEO_FIELDS = (
     "hls_url",
     "upload_date",
 )
+
+SCENE_INDEX_NAME = "scene_marengo"
 
 
 def _get_scenes_table():
@@ -127,6 +130,64 @@ def _title_similarity(
         .collect()
     )
     return [r for r in rows if r["id"] not in exclude]
+
+
+def _scene_embeddings_for_video(scenes_t, video_id: str) -> list:
+    """Return the stored Marengo scene embeddings for one video (no re-embedding).
+
+    Reads them via ColumnRef.embedding(idx=...) — the index values themselves —
+    so this is a direct lookup, not an API call.
+    """
+    try:
+        emb_col = scenes_t.video_segment.embedding(idx=SCENE_INDEX_NAME)
+        rows = list(
+            scenes_t.where(scenes_t.id == video_id)
+            .select(emb=emb_col)
+            .collect()
+        )
+        return [r["emb"] for r in rows if r.get("emb") is not None]
+    except Exception as exc:
+        logger.warning("Could not read stored scene embeddings for %s: %s", video_id, exc)
+        return []
+
+
+def _scene_vector_similarity(
+    scenes_t,
+    query_vec,
+    exclude_ids: set[str] | None = None,
+    limit: int = 10,
+    creator_id: str | None = None,
+) -> list[dict]:
+    """Nearest-neighbor over the scene index using a raw vector. Dedupes scenes → videos."""
+    sim = scenes_t.video_segment.similarity(vector=query_vec)
+    query = scenes_t
+    if creator_id:
+        query = query.where(scenes_t.creator_id == creator_id)
+
+    exclude = exclude_ids or set()
+    cols = [getattr(scenes_t, f) for f in VIDEO_FIELDS]
+    try:
+        cols.extend([scenes_t.segment_start, scenes_t.segment_end])
+    except AttributeError:
+        pass
+    fetch_mult = 12
+    scene_rows = list(
+        query.order_by(sim, asc=False)
+        .limit((limit + len(exclude)) * fetch_mult)
+        .select(*cols, score=sim)
+        .collect()
+    )
+
+    seen: set[str] = set()
+    deduped: list[dict] = []
+    for row in scene_rows:
+        vid = row["id"]
+        if vid not in seen and vid not in exclude:
+            seen.add(vid)
+            deduped.append(row)
+            if len(deduped) >= limit:
+                break
+    return deduped
 
 
 def _attach_attrs(rows: list[dict], videos_t) -> None:
@@ -237,7 +298,16 @@ def list_videos(
     if creator_id:
         query = query.where(videos_t.creator_id == creator_id)
 
-    all_rows = list(_select_videos(videos_t, query).collect())
+    raw_rows = list(_select_videos(videos_t, query).collect())
+    # Incremental setup runs (no --drop-dir) can leave duplicate-id rows;
+    # collapse to first occurrence so the listing is clean.
+    seen: set[str] = set()
+    all_rows: list[dict] = []
+    for r in raw_rows:
+        rid = r.get("id")
+        if rid and rid not in seen:
+            seen.add(rid)
+            all_rows.append(r)
     total = len(all_rows)
     total_pages = max(1, (total + limit - 1) // limit)
     start = (page - 1) * limit
