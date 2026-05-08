@@ -1,36 +1,32 @@
 """Pixeltable schema + data setup.
 
-Creates tables, indexes, computed columns, and loads video data from
-the Twelve Labs index. Run once — everything is idempotent.
+Pulls metadata + precomputed visual scene embeddings from the Twelve Labs
+indexed assets API and stores them in Pixeltable. No local mp4 files,
+no scene detection, no re-embedding — TL did all of that at upload time.
 
-By default loads 3 quick-start videos (fast).
-Pass --full to load all 25 videos.
+Pixeltable's role here:
+  - Multimodal table + Array index (precomputed embeddings, 1st-class feature)
+  - Declarative computed columns: analyze_video, fetch_tl_segments
+  - Embedding indexes maintained automatically as rows arrive
+  - Cross-modal text→video query via string_embed=marengo at query time
 
-Scene detection (scene_detect_histogram) finds natural scene boundaries,
-then video_splitter splits at those points with mode='fast' (stream copy,
-no re-encoding). Produces ~40 scenes per video.
+Run once — everything is idempotent.
 
 Usage:
-    uv run download_videos.py          # download 3 videos
-    uv run setup_pixeltable.py         # insert 3 videos + detect scenes + embed
-
-    uv run download_videos.py --full   # download all 25 videos (13GB)
-    uv run setup_pixeltable.py --full  # insert all 25 + detect scenes + embed
+    uv run setup_pixeltable.py         # 3 quick-start videos
+    uv run setup_pixeltable.py --full  # all 25 videos
 """
 
 import argparse
 import logging
-import os
-import re
-from pathlib import Path
 
 import httpx
+import numpy as np
 import pixeltable as pxt
 from pixeltable.functions.twelvelabs import embed
-from pixeltable.functions.video import video_splitter
 
 import config
-from functions import analyze_video
+from functions import analyze_video, fetch_tl_segments
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
@@ -39,15 +35,8 @@ QUICK_YOUTUBE_IDS = {"sO4te2QNsHY", "ntPGl8UyIq4", "QpKypvDjiPM"}
 
 marengo = embed.using(model_name="marengo3.0")
 
-# Override via VIDEO_FILES_DIR env (e.g. /var/pixeltable/video_files on Render
-# so source files persist across container restarts).
-VIDEO_FILES_DIR = Path(
-    os.environ.get("VIDEO_FILES_DIR", Path(__file__).resolve().parent / "video_files")
-)
-
-
-def strip_extension(filename: str) -> str:
-    return re.sub(r"\.(mp4|webm|mkv|mov)$", "", filename, flags=re.IGNORECASE).strip()
+# Marengo 3.0 visual embeddings are 512-dim.
+EMBEDDING_DIM = 512
 
 
 def setup(full: bool = False):
@@ -80,13 +69,12 @@ def setup(full: bool = False):
             "thumbnail_url": pxt.String,
             "hls_url": pxt.String,
             "upload_date": pxt.String,
-            "video": pxt.Video,
         },
         primary_key=["id"],
         if_exists="ignore",
     )
 
-    # Text-based embedding index on title (for text → video search)
+    # Title text embedding (text → video search fallback)
     videos.add_embedding_index(
         "title", string_embed=marengo, idx_name="title_marengo", if_exists="ignore"
     )
@@ -98,6 +86,35 @@ def setup(full: bool = False):
     videos.add_computed_column(topic=videos.raw_attributes["topic"], if_exists="ignore")
     videos.add_computed_column(style=videos.raw_attributes["style"], if_exists="ignore")
     videos.add_computed_column(tone=videos.raw_attributes["tone"], if_exists="ignore")
+
+    # TL retrieve: precomputed visual segment embeddings
+    videos.add_computed_column(
+        tl_segments=fetch_tl_segments(videos.id), if_exists="ignore"
+    )
+
+    # Scenes table: one row per Marengo visual segment from TL retrieve.
+    # Stored visual_embedding is a precomputed Array — Pixeltable indexes the
+    # vectors directly, no embed function called on insert. string_embed=marengo
+    # is only used at query time to embed text queries into the same space.
+    scenes = pxt.create_table(
+        f"{config.APP_NAMESPACE}.scenes",
+        {
+            "video_id": pxt.Required[pxt.String],
+            "segment_idx": pxt.Required[pxt.Int],
+            "start_sec": pxt.Float,
+            "end_sec": pxt.Float,
+            "visual_embedding": pxt.Required[pxt.Array[(EMBEDDING_DIM,), pxt.Float]],
+        },
+        primary_key=["video_id", "segment_idx"],
+        if_exists="ignore",
+    )
+    scenes.add_embedding_index(
+        "visual_embedding",
+        string_embed=marengo,
+        metric="cosine",
+        idx_name="scene_marengo",
+        if_exists="ignore",
+    )
     logger.info("  Schema ready")
 
     # -- Data from Twelve Labs index ------------------------------------------
@@ -133,9 +150,8 @@ def setup(full: bool = False):
         status = creators.insert(creator_rows, on_error="ignore")
         logger.info("  Creators: %d inserted", status.num_rows)
 
-    # Videos — resolve local video file paths via YouTube ID
+    # Videos — metadata only, no local file path
     video_rows = []
-    missing_files = []
     for tlv in tl_videos:
         meta = tlv.get("user_metadata") or {}
         sys_meta = tlv.get("system_metadata", {})
@@ -143,37 +159,22 @@ def setup(full: bool = False):
         if not meta.get("creatorId") or not meta.get("creatorName"):
             continue
 
-        youtube_id = meta.get("youtubeId", "")
-        video_path = _resolve_video_path(youtube_id)
-        if not video_path:
-            missing_files.append(youtube_id or tlv["_id"])
-
+        title = (sys_meta.get("filename") or "").rsplit(".", 1)[0]
         video_rows.append(
             {
                 "id": tlv["_id"],
-                "title": strip_extension(sys_meta.get("filename", "")),
+                "title": title,
                 "creator_id": meta["creatorId"],
                 "category": meta.get("category", "interview"),
                 "duration": round(sys_meta.get("duration", 0)),
                 "thumbnail_url": (hls.get("thumbnail_urls") or [""])[0],
                 "hls_url": hls.get("video_url", ""),
                 "upload_date": meta.get("uploadDate", ""),
-                "video": video_path,
             }
         )
 
-    has_video_files = len(missing_files) < len(video_rows)
-    if missing_files:
-        logger.warning(
-            "  %d/%d videos missing local files (yt-dlp blocked on cloud IPs is common). "
-            "Title embeddings will still work; scene detection requires video files. "
-            "IDs: %s",
-            len(missing_files),
-            len(video_rows),
-            ", ".join(missing_files[:5]),
-        )
-
     if video_rows:
+        # Smaller batches keep TL Analyze + retrieve calls easy to retry on failure.
         batch_size = 3
         total_inserted, total_errors = 0, 0
         for i in range(0, len(video_rows), batch_size):
@@ -191,60 +192,47 @@ def setup(full: bool = False):
             "  Videos: %d inserted, %d errors", total_inserted, total_errors
         )
 
-    # -- Scene detection + scene-based view (for cross-modal search) -----------
-    # Uses Pixeltable's built-in scene_detect_histogram to find natural scene
-    # boundaries, then video_splitter with mode='fast' (stream copy, no
-    # re-encoding) to split at those points. ~10 scenes per video in seconds.
+    # -- Populate scenes table from videos.tl_segments -------------------------
+    # tl_segments was just filled by the computed column. Read it back and
+    # explode each segment list into scene rows.
 
-    videos.add_computed_column(
-        scenes=videos.video.scene_detect_histogram(
-            fps=2, threshold=0.8, min_scene_len=120,
-        ),
-        if_exists="ignore",
+    logger.info("  Populating scenes table from tl_segments ...")
+    inserted_videos = list(
+        videos.select(videos.id, videos.tl_segments).collect()
     )
-    logger.info("  Scene detection column ready")
+    total_scenes = 0
+    failed_videos = 0
+    for vrow in inserted_videos:
+        vid = vrow["id"]
+        segs = vrow.get("tl_segments") or []
+        if not segs:
+            failed_videos += 1
+            continue
+        scene_rows = []
+        for i, s in enumerate(segs):
+            vec = s.get("vec")
+            if not vec or len(vec) != EMBEDDING_DIM:
+                continue
+            scene_rows.append(
+                {
+                    "video_id": vid,
+                    "segment_idx": i,
+                    "start_sec": s.get("start_sec"),
+                    "end_sec": s.get("end_sec"),
+                    "visual_embedding": np.asarray(vec, dtype=np.float32),
+                }
+            )
+        if scene_rows:
+            scenes.insert(scene_rows, on_error="ignore")
+            total_scenes += len(scene_rows)
 
-    try:
-        logger.info("  Creating video_scenes view...")
-        video_scenes = pxt.create_view(
-            f"{config.APP_NAMESPACE}.video_scenes",
-            videos,
-            iterator=video_splitter(
-                video=videos.video,
-                segment_times=videos.scenes[1:].start_time,
-                mode="fast",
-            ),
-            if_exists="ignore",
-        )
-
-        video_scenes.add_embedding_index(
-            "video_segment",
-            embedding=marengo,
-            idx_name="scene_marengo",
-            if_exists="ignore",
-        )
-        scene_count = video_scenes.count()
-        logger.info("  video_scenes: %d scenes indexed", scene_count)
-    except Exception as exc:
-        logger.warning(
-            "  video_scenes creation failed: %s\n"
-            "  The app will use title-based similarity as fallback.\n"
-            "  Re-run setup to retry.",
-            exc,
-        )
-
+    logger.info(
+        "  scenes: %d rows inserted across %d videos (%d videos had no segments)",
+        total_scenes,
+        len(inserted_videos) - failed_videos,
+        failed_videos,
+    )
     logger.info("\nSetup complete.")
-
-
-def _resolve_video_path(youtube_id: str) -> str | None:
-    """Find the local video file for a given YouTube video ID across common extensions."""
-    if not youtube_id:
-        return None
-    for ext in (".mp4", ".webm", ".mkv", ".mov"):
-        path = VIDEO_FILES_DIR / f"{youtube_id}{ext}"
-        if path.exists() and path.stat().st_size > 0:
-            return str(path)
-    return None
 
 
 def _fetch_tl_videos() -> list[dict]:

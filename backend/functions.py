@@ -36,6 +36,54 @@ VALID_TONES = frozenset(
 
 
 @pxt.udf
+def fetch_tl_segments(video_id: str) -> list:
+    """Pull precomputed visual scene embeddings from Twelve Labs.
+
+    Each TL-indexed asset already has Marengo visual segment embeddings
+    generated at upload time. Calling /indexed-assets/{id}?embedding_option=visual
+    returns them as a list of {start, end, vec} segments — no recomputation.
+
+    Returns a list of {start_sec, end_sec, vec} dicts (vec is a 512-float list).
+    Empty list on failure so the row still gets inserted.
+    """
+    url = (
+        f"{config.TWELVELABS_BASE_URL}/indexes/{config.TWELVELABS_INDEX_ID}"
+        f"/indexed-assets/{video_id}"
+    )
+    headers = {"x-api-key": config.TWELVELABS_API_KEY}
+    try:
+        resp = httpx.get(
+            url,
+            params=[("embedding_option", "visual")],
+            headers=headers,
+            timeout=120.0,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        segments = (
+            data.get("embedding", {})
+            .get("video_embedding", {})
+            .get("segments", [])
+        )
+        out: list = []
+        for s in segments:
+            vec = s.get("float") or s.get("float_")
+            if not vec:
+                continue
+            out.append(
+                {
+                    "start_sec": float(s.get("start_offset_sec", 0.0)),
+                    "end_sec": float(s.get("end_offset_sec", 0.0)),
+                    "vec": vec,
+                }
+            )
+        return out
+    except Exception as e:
+        logger.warning("TL retrieve failed for video %s: %s", video_id, e)
+        return []
+
+
+@pxt.udf
 def analyze_video(video_id: str) -> dict:
     """Call Twelve Labs Analyze API to extract topic, style, and tone."""
     url = f"{config.TWELVELABS_BASE_URL}/analyze"

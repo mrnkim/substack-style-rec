@@ -35,14 +35,64 @@ VIDEO_FIELDS = (
 )
 
 SCENE_INDEX_NAME = "scene_marengo"
+SCENE_EMBED_COL = "visual_embedding"
 
 
 def _get_scenes_table():
-    """Return the video_scenes view, or None if unavailable."""
+    """Return the scenes table, or None if unavailable."""
     try:
-        return pxt.get_table(f"{config.APP_NAMESPACE}.video_scenes")
+        return pxt.get_table(f"{config.APP_NAMESPACE}.scenes")
     except Exception:
         return None
+
+
+def _hydrate_scene_rows(
+    scene_rows: list[dict],
+    videos_t,
+    exclude_ids: set[str],
+    limit: int,
+) -> list[dict]:
+    """Take raw scene rows from a similarity query, dedupe by video_id, and
+    attach the parent video's metadata (id, title, creator_id, ...).
+
+    Scene-only rows from `scenes` carry video_id + segment_idx + start/end
+    + score, but downstream code expects the same shape as videos rows
+    (id, title, creator_id, category, ...). This joins them in one batch.
+    """
+    seen: set[str] = set()
+    keepers: list[dict] = []
+    for r in scene_rows:
+        vid = r["video_id"]
+        if vid in seen or vid in exclude_ids:
+            continue
+        seen.add(vid)
+        keepers.append(r)
+        if len(keepers) >= limit:
+            break
+
+    if not keepers:
+        return []
+
+    video_ids = [r["video_id"] for r in keepers]
+    meta = {
+        r["id"]: r
+        for r in videos_t.where(videos_t.id.isin(video_ids))
+        .select(*[getattr(videos_t, f) for f in VIDEO_FIELDS])
+        .collect()
+    }
+    out = []
+    for r in keepers:
+        m = meta.get(r["video_id"], {})
+        out.append(
+            {
+                **m,
+                "id": r["video_id"],
+                "score": r.get("score"),
+                "segment_start": r.get("start_sec"),
+                "segment_end": r.get("end_sec"),
+            }
+        )
+    return out
 
 
 ATTR_FIELDS = ("topic", "style", "tone")
@@ -69,43 +119,36 @@ def _scene_similarity(
     creator_id: str | None = None,
     **sim_kwargs,
 ) -> list[dict]:
-    """Query video_segment embeddings on scenes view, deduplicate to unique videos.
+    """Run cross-modal similarity on the scene_marengo Array index.
 
-    Accepts any similarity kwargs: string="text", image="/path", video="/path", audio="/path".
+    Accepts similarity kwargs: string="text", image="/path", video="/path".
+    The Array index has string_embed=marengo (and others, when configured)
+    so query values are embedded at query time into the same 512-d space.
     """
-    sim = scenes_t.video_segment.similarity(**sim_kwargs)
+    sim = getattr(scenes_t, SCENE_EMBED_COL).similarity(**sim_kwargs)
     query = scenes_t
-    if creator_id:
-        query = query.where(scenes_t.creator_id == creator_id)
-
-    exclude = exclude_ids or set()
-    cols = [getattr(scenes_t, f) for f in VIDEO_FIELDS]
-    # Include scene timestamps when available
-    try:
-        cols.extend([scenes_t.segment_start, scenes_t.segment_end])
-        has_timestamps = True
-    except AttributeError:
-        has_timestamps = False
-    # Fetch extra scenes before deduping to unique videos; a small multiplier
-    # under-fills when a few titles dominate the top-N scenes (hurts recall).
+    # creator filter requires a join to videos — done after dedupe to avoid
+    # making every scene query expensive.
     fetch_mult = 12
+    exclude = set(exclude_ids or set())
     scene_rows = list(
         query.order_by(sim, asc=False)
         .limit((limit + len(exclude)) * fetch_mult)
-        .select(*cols, score=sim)
+        .select(
+            scenes_t.video_id,
+            scenes_t.segment_idx,
+            scenes_t.start_sec,
+            scenes_t.end_sec,
+            score=sim,
+        )
         .collect()
     )
 
-    seen: set[str] = set()
-    deduped: list[dict] = []
-    for row in scene_rows:
-        vid = row["id"]
-        if vid not in seen and vid not in exclude:
-            seen.add(vid)
-            deduped.append(row)
-            if len(deduped) >= limit:
-                break
-    return deduped
+    videos_t = pxt.get_table(f"{config.APP_NAMESPACE}.videos")
+    rows = _hydrate_scene_rows(scene_rows, videos_t, exclude, limit * 4)
+    if creator_id:
+        rows = [r for r in rows if r.get("creator_id") == creator_id]
+    return rows[:limit]
 
 
 def _title_similarity(
@@ -135,14 +178,14 @@ def _title_similarity(
 def _scene_embeddings_for_video(scenes_t, video_id: str) -> list:
     """Return the stored Marengo scene embeddings for one video (no re-embedding).
 
-    Reads them via ColumnRef.embedding(idx=...) — the index values themselves —
-    so this is a direct lookup, not an API call.
+    The visual_embedding column already holds the precomputed vectors; we read
+    them directly. We don't even need ColumnRef.embedding(idx=...) here because
+    visual_embedding *is* the column the index is built on.
     """
     try:
-        emb_col = scenes_t.video_segment.embedding(idx=SCENE_INDEX_NAME)
         rows = list(
-            scenes_t.where(scenes_t.id == video_id)
-            .select(emb=emb_col)
+            scenes_t.where(scenes_t.video_id == video_id)
+            .select(emb=getattr(scenes_t, SCENE_EMBED_COL))
             .collect()
         )
         return [r["emb"] for r in rows if r.get("emb") is not None]
@@ -159,35 +202,27 @@ def _scene_vector_similarity(
     creator_id: str | None = None,
 ) -> list[dict]:
     """Nearest-neighbor over the scene index using a raw vector. Dedupes scenes → videos."""
-    sim = scenes_t.video_segment.similarity(vector=query_vec)
-    query = scenes_t
-    if creator_id:
-        query = query.where(scenes_t.creator_id == creator_id)
-
-    exclude = exclude_ids or set()
-    cols = [getattr(scenes_t, f) for f in VIDEO_FIELDS]
-    try:
-        cols.extend([scenes_t.segment_start, scenes_t.segment_end])
-    except AttributeError:
-        pass
+    sim = getattr(scenes_t, SCENE_EMBED_COL).similarity(vector=query_vec)
     fetch_mult = 12
+    exclude = set(exclude_ids or set())
     scene_rows = list(
-        query.order_by(sim, asc=False)
+        scenes_t.order_by(sim, asc=False)
         .limit((limit + len(exclude)) * fetch_mult)
-        .select(*cols, score=sim)
+        .select(
+            scenes_t.video_id,
+            scenes_t.segment_idx,
+            scenes_t.start_sec,
+            scenes_t.end_sec,
+            score=sim,
+        )
         .collect()
     )
 
-    seen: set[str] = set()
-    deduped: list[dict] = []
-    for row in scene_rows:
-        vid = row["id"]
-        if vid not in seen and vid not in exclude:
-            seen.add(vid)
-            deduped.append(row)
-            if len(deduped) >= limit:
-                break
-    return deduped
+    videos_t = pxt.get_table(f"{config.APP_NAMESPACE}.videos")
+    rows = _hydrate_scene_rows(scene_rows, videos_t, exclude, limit * 4)
+    if creator_id:
+        rows = [r for r in rows if r.get("creator_id") == creator_id]
+    return rows[:limit]
 
 
 def _attach_attrs(rows: list[dict], videos_t) -> None:
