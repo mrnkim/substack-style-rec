@@ -126,14 +126,11 @@ def _scene_similarity(
     so query values are embedded at query time into the same 512-d space.
     """
     sim = getattr(scenes_t, SCENE_EMBED_COL).similarity(**sim_kwargs)
-    query = scenes_t
-    # creator filter requires a join to videos — done after dedupe to avoid
-    # making every scene query expensive.
-    fetch_mult = 12
     exclude = set(exclude_ids or set())
+    fetch_n = max(limit * 24, 1200)
     scene_rows = list(
-        query.order_by(sim, asc=False)
-        .limit((limit + len(exclude)) * fetch_mult)
+        scenes_t.order_by(sim, asc=False)
+        .limit(fetch_n)
         .select(
             scenes_t.video_id,
             scenes_t.segment_idx,
@@ -190,7 +187,10 @@ def _scene_embeddings_for_video(scenes_t, video_id: str) -> list:
         )
         return [r["emb"] for r in rows if r.get("emb") is not None]
     except Exception as exc:
-        logger.warning("Could not read stored scene embeddings for %s: %s", video_id, exc)
+        logger.warning(
+            "Could not read stored scene embeddings for %s: %s: %s",
+            video_id, type(exc).__name__, exc,
+        )
         return []
 
 
@@ -201,13 +201,20 @@ def _scene_vector_similarity(
     limit: int = 10,
     creator_id: str | None = None,
 ) -> list[dict]:
-    """Nearest-neighbor over the scene index using a raw vector. Dedupes scenes → videos."""
+    """Nearest-neighbor over the scene index using a raw vector. Dedupes scenes → videos.
+
+    Pixeltable's pgvector index doesn't combine cleanly with WHERE filters on
+    Array columns (the optimizer drops to an empty plan), so we order by sim,
+    fetch a wide top-K, and dedupe in Python. Fetch size has to clear the
+    biggest single-video scene cluster (~470 segments here) plus diversity
+    headroom — hence the absolute floor below.
+    """
     sim = getattr(scenes_t, SCENE_EMBED_COL).similarity(vector=query_vec)
-    fetch_mult = 12
     exclude = set(exclude_ids or set())
+    fetch_n = max(limit * 24, 1200)
     scene_rows = list(
         scenes_t.order_by(sim, asc=False)
-        .limit((limit + len(exclude)) * fetch_mult)
+        .limit(fetch_n)
         .select(
             scenes_t.video_id,
             scenes_t.segment_idx,
