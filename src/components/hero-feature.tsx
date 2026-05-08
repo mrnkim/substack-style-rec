@@ -79,12 +79,6 @@ export function HeroFeature({ video }: HeroFeatureProps) {
             </svg>
             Watch Now
           </Link>
-          <Link
-            href={`/creator/${video.creator.id}`}
-            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-default)] text-[var(--text-primary)] text-sm font-medium transition-all hover:bg-[var(--bg-hover)] hover:border-[var(--text-tertiary)]"
-          >
-            More Info
-          </Link>
         </div>
       </div>
     </div>
