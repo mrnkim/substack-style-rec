@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useEffect, useRef, useState } from "react";
+import { use, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { getVideo, getSimilarVideos } from "@/lib/api";
@@ -23,6 +23,20 @@ export default function WatchPage({ params }: { params: Promise<{ id: string }> 
   const watchHistoryRef = useRef(watchHistory);
   watchHistoryRef.current = watchHistory;
   const playerRef = useRef<VideoPlayerHandle>(null);
+
+  // Defensive dedupe — under the TL-retrieve scene-vector path the backend
+  // can occasionally surface the same video.id twice (different scene match
+  // ranks for the same video collapsing on the way back up), which would
+  // crash this map with React's duplicate-key warning.
+  const uniqueSimilar = useMemo(() => {
+    const seen = new Set<string>();
+    return similar.filter((rec) => {
+      const id = rec?.video?.id;
+      if (!id || seen.has(id)) return false;
+      seen.add(id);
+      return true;
+    });
+  }, [similar]);
 
   useEffect(() => {
     let cancelled = false;
@@ -216,13 +230,13 @@ export default function WatchPage({ params }: { params: Promise<{ id: string }> 
                 </div>
               ))}
             </div>
-          ) : similar.length === 0 ? (
+          ) : uniqueSimilar.length === 0 ? (
             <p className="text-sm text-[var(--text-tertiary)]">
               No similar videos yet.
             </p>
           ) : (
             <div className="space-y-4 stagger">
-              {similar.map((rec) => {
+              {uniqueSimilar.map((rec) => {
                 // Recompute subscription-derived fields client-side so the
                 // badge and contextTag react to live subscription toggles
                 // without re-fetching /similar.
