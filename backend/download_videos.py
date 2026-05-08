@@ -19,6 +19,8 @@ import sys
 from pathlib import Path
 from urllib.parse import quote
 
+import httpx
+
 # yt-dlp is only needed for the YouTube path (local development).
 # We import it lazily inside _download_youtube() so cloud images that don't
 # ship yt-dlp (e.g., the Render container) can still run with --r2.
@@ -139,14 +141,13 @@ def _download_r2(youtube_id: str, output_dir: Path) -> Path | None:
 
     try:
         logger.info("  Downloading from R2: %s", r2_filename)
-        result = subprocess.run(
-            ["curl", "-fSL", "-o", str(dl_path), url],
-            capture_output=True, text=True, timeout=600,
-        )
-        if result.returncode != 0:
-            logger.warning("  curl failed: %s", result.stderr[:200])
-            dl_path.unlink(missing_ok=True)
-            return None
+        with httpx.stream("GET", url, follow_redirects=True, timeout=600.0) as resp:
+            if resp.status_code != 200:
+                logger.warning("  R2 GET %s → HTTP %d", r2_filename, resp.status_code)
+                return None
+            with open(dl_path, "wb") as f:
+                for chunk in resp.iter_bytes(chunk_size=1024 * 1024):
+                    f.write(chunk)
 
         if not dl_path.exists() or dl_path.stat().st_size == 0:
             logger.warning("  Empty download for %s", youtube_id)
