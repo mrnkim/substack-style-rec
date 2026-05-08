@@ -107,7 +107,27 @@ def fetch_tl_segments(video_id: str) -> list:
 
 @pxt.udf
 def analyze_video(video_id: str) -> dict:
-    """Call Twelve Labs Analyze API to extract topic, style, and tone."""
+    """Call Twelve Labs Analyze API to extract topic, style, and tone.
+
+    Prefers the pre-computed JSON cache (backend/summaries.json) so Render
+    setup doesn't have to make these calls — /analyze is the OOM trigger on
+    the 512 MB Starter plan.
+    """
+    cached = _SUMMARIES_CACHE.get(video_id, {}).get("attributes")
+    if isinstance(cached, dict):
+        topic = cached.get("topic") or []
+        style = str(cached.get("style") or "").lower()
+        tone = str(cached.get("tone") or "").lower()
+        if style not in VALID_STYLES:
+            style = "interview"
+        if tone not in VALID_TONES:
+            tone = "serious"
+        return {
+            "topic": topic if isinstance(topic, list) else [],
+            "style": style,
+            "tone": tone,
+        }
+
     url = f"{config.TWELVELABS_BASE_URL}/analyze"
     headers = {
         "x-api-key": config.TWELVELABS_API_KEY,
