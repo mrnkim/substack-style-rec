@@ -5,9 +5,9 @@
 #   2. Render creates the web service + disk.
 #   3. Set the two `sync: false` env vars (API key, CORS origins) in the UI.
 #   4. After first deploy finishes, open the Render Shell and run:
-#        uv run download_videos.py --full
 #        uv run setup_pixeltable.py --full
-#      (or drop `--full` for the 3-video quick-start.)
+#      (or drop `--full` for the 3-video quick-start. Takes ~3 min on full —
+#       it's just metadata + analyze API + TL retrieve, no video processing.)
 #   5. Subsequent deploys reattach to the same disk, so setup does not re-run.
 
 services:
@@ -15,7 +15,7 @@ services:
     name: substack-rec-api
     runtime: docker
     dockerfilePath: ./Dockerfile
-    plan: standard               # 2GB RAM / 1 CPU — Starter (512MB) OOMs during scene_detect.
+    plan: starter                # 512MB / 0.5 CPU is plenty for inference + light retrieval.
     region: oregon               # Match your Vercel region if latency matters.
     healthCheckPath: /health
     autoDeploy: true
@@ -23,7 +23,8 @@ services:
     disk:
       name: pixeltable-data
       mountPath: /var/pixeltable
-      sizeGB: 20                 # ~13 GB videos + pgdata + margin for --full.
+      sizeGB: 20                 # Render disks can grow but not shrink, so leave room.
+                                 # Actual usage is ~100 MB (pgdata only — no mp4 files).
 
     envVars:
       - key: TWELVELABS_API_KEY
@@ -32,8 +33,6 @@ services:
         value: 69c37b6708cd679f8afbd748
       - key: PIXELTABLE_HOME
         value: /var/pixeltable
-      - key: VIDEO_FILES_DIR
-        value: /var/pixeltable/video_files   # Persist source mp4s across restarts.
       - key: CORS_ORIGINS
         sync: false              # e.g. https://substack-style-rec.vercel.app
                                  # (Vercel preview URLs are already covered by

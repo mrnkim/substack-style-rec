@@ -5,6 +5,10 @@ in the `scene_marengo` index. For each reference (watched) video we read its
 stored scene vectors directly — no re-embedding — and run nearest-neighbor
 queries against the same index. Per-target-video score = max similarity
 across all (ref scene, target scene) pairs.
+
+Per-scene NN queries run sequentially (Pixeltable's internal state isn't
+thread-safe across concurrent queries), so we cap the number of ref scenes
+per video via uniform sampling instead.
 """
 
 import logging
@@ -45,6 +49,12 @@ router = APIRouter(prefix="/api/recommendations", tags=["recommendations"])
 # across the 5 ref videos. Sampling here drops the cold for-you fetch from
 # ~20–37 s to ~3–5 s (5 watched × 6 scenes vs 5 × ~50 scenes).
 FOR_YOU_REF_SCENES_PER_VIDEO = 6
+
+# /similar has only one ref video. 12 evenly-sampled scenes are enough to
+# stabilize the top-N (Marengo embeddings on adjacent scenes are highly
+# correlated, so 12 ≈ 24 ≈ full-470 in ranking). Halving 24→12 roughly
+# halves the wall-time on long-video refs (BTS-class).
+SIMILAR_REF_SCENES = 12
 
 
 def _sample_evenly(items: list, n: int) -> list:
@@ -398,6 +408,7 @@ def similar(body: SimilarRequest):
         ref,
         exclude,
         body.limit * 3,
+        max_ref_scenes=SIMILAR_REF_SCENES,
     )
     _attach_attrs(candidates, videos_t)
     candidates = _apply_diversity(candidates)
