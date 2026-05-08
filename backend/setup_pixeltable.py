@@ -232,12 +232,13 @@ def setup(full: bool = False):
 
 
 def _resolve_video_path(youtube_id: str) -> str | None:
-    """Find the local .mp4 file for a given YouTube video ID."""
+    """Find the local video file for a given YouTube video ID across common extensions."""
     if not youtube_id:
         return None
-    path = VIDEO_FILES_DIR / f"{youtube_id}.mp4"
-    if path.exists() and path.stat().st_size > 0:
-        return str(path)
+    for ext in (".mp4", ".webm", ".mkv", ".mov"):
+        path = VIDEO_FILES_DIR / f"{youtube_id}{ext}"
+        if path.exists() and path.stat().st_size > 0:
+            return str(path)
     return None
 
 

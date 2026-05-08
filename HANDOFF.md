@@ -1,6 +1,6 @@
 # HANDOFF.md — Substack TV-Style Recommendation Engine
 
-> Last updated: 2026-04-18
+> Last updated: 2026-04-28
 >
 > This file is a short, current snapshot. Canonical docs:
 > - **Setup & quick start** → [`README.md`](./README.md)
@@ -16,21 +16,21 @@ AI-powered video recommendation demo in the style of Substack TV. Uses Twelve La
 ## Architecture
 
 ```
-Next.js 16 frontend (localhost:3000)
+Next.js 16 frontend (Vercel: substack-style-rec.vercel.app)
        |  NEXT_PUBLIC_API_BASE
        v
-FastAPI backend (localhost:8000)
+FastAPI backend (Render: substack-rec-api-g2ui.onrender.com)
        |
        v
-Pixeltable
-  ├── creators table (11 creators)
-  ├── videos table (25 indexed videos + pxt.Video + Analyze API attrs)
-  ├── video_scenes view (scene_detect_histogram + video_splitter mode=fast)
-  ├── scene_marengo embedding index (per-scene Marengo 3.0 vectors)
-  └── title_marengo embedding index (text fallback)
+Pixeltable (embedded PostgreSQL on Render persistent disk)
+  ├── creators table (10 creators)
+  ├── videos table (25 indexed videos + Analyze API attrs)
+  └── title_marengo embedding index (text similarity)
        |
        v
-Twelve Labs API (Embed v2 + Analyze)
+Twelve Labs API (Embed v2, Analyze, Search)
+       |
+Cloudflare R2 (video file storage: tl-substack-style-app bucket)
 ```
 
 ### Data flow
@@ -46,26 +46,36 @@ Twelve Labs API (Embed v2 + Analyze)
 | Backend | FastAPI + Pixeltable + `uv` package management |
 | Embeddings | Twelve Labs Marengo 3.0 (512-dim), scene-level + title fallback |
 | Attribute Extraction | Twelve Labs Analyze API (topic / style / tone) |
-| Scene Detection | Pixeltable `scene_detect_histogram` + `video_splitter(mode='fast')` |
+| Scene Search | Twelve Labs Search API (returns scene-level timestamps) |
 | Video Player | hls.js with CloudFront HLS URLs from Twelve Labs |
-| Storage | Local Pixeltable Postgres (`PIXELTABLE_HOME`) |
+| Video Storage | Cloudflare R2 (`tl-substack-style-app` bucket, public) |
+| DB Storage | Embedded Pixeltable Postgres on Render persistent disk (20 GB) |
+| Deployment | Vercel (frontend) + Render Starter (backend, $12/mo) |
 
 ## Implementation Status
 
 ### Complete
-- Pixeltable schema: creators + videos + `video_scenes` view with scene-level Marengo 3.0 embeddings.
-- Scene detection via `scene_detect_histogram` + stream-copy `video_splitter(mode='fast')` — no re-encoding.
+- Pixeltable schema: creators + videos tables with title-level Marengo 3.0 embeddings.
 - Analyze API computed columns: topic, style, tone run automatically on INSERT.
-- All endpoints: `/api/videos`, `/api/creators`, `/api/recommendations/{for-you,similar,creator-catalog}`, `/api/search` (GET text + POST multimodal).
+- All endpoints: `/api/videos`, `/api/creators`, `/api/recommendations/{for-you,similar,creator-catalog}`, `/api/search`.
 - 70 / 30 subscription / discovery split with max-2-per-creator diversity.
-- Explainable recommendations (`generate_reason` UDF).
+- Explainable recommendations: short reason + matchedAttributes as individual pills (topic overlap, style/tone, creator context).
 - Cold start fallback (latest from subscriptions + discovery).
-- Multimodal search (image / video / audio file upload → cross-modal scene matching).
-- Resilience: size guards on Twelve Labs Embed v2 (35 MB), title-similarity fallback on API failures, frontend decoupled loading so one failing endpoint never blocks the page.
+- Text search via Twelve Labs Search API with scene-level timestamps and scene thumbnails.
+- Search results show rank badge, scene time range, category pill, and matched scene thumbnail.
+- Nav: Subscriptions dropdown (count + list + unsubscribe) and Watch History dropdown (thumbnails + reset).
+- Console logging of recommendation scores for debugging (browser DevTools).
+- Video player supports `?t=` query param for scene-level deep linking.
+- Resilience: title-similarity fallback on API failures, frontend decoupled loading.
+- Production deployment: Vercel (frontend) + Render (backend) + Cloudflare R2 (video files).
+- Video download from R2 instead of YouTube (YouTube blocks data center IPs).
 
-### Open
+### Open / Known Issues
+- **video_scenes view not created on Render** — Starter plan (0.5 CPU, 512 MB) cannot run scene_detect_histogram on 25 videos. Text search uses TL Search API as workaround. Recommendations use title_marengo fallback.
+- **Render Starter auto-sleep** — 15 min inactivity causes ~30s cold start. Hit `/health` before demos.
+- **Multimodal file search disabled** — Image/video/audio upload search removed from UI (requires video_scenes view). Backend code preserved for future re-enablement.
 - Session-based live personalization (re-rank within a session based on in-session clicks).
-- Production deployment of the FastAPI backend (frontend is Vercel-ready today).
+- Scene detection could be re-enabled with Standard plan ($25/mo) or by pre-computing on a local machine and uploading the DB.
 
 ## Content
 
@@ -91,7 +101,7 @@ Runtime (lives in `backend/`, run with `uv`):
 
 | Script | Purpose |
 |---|---|
-| `download_videos.py` | Fetch MP4 files from YouTube for Pixeltable ingestion |
+| `download_videos.py` | Fetch video files from Cloudflare R2 for Pixeltable ingestion |
 | `setup_pixeltable.py` | Create schema, ingest, build scene view + embedding indexes |
 | `run_setup_logged.sh` | Same, with `pxt.drop_dir` reset + logging to `backend/logs/` |
 | `main.py` | Start FastAPI on `:8000` |
@@ -99,12 +109,34 @@ Runtime (lives in `backend/`, run with `uv`):
 ## Key Decisions
 
 1. **Dual data source** — Frontend works against Next.js `/api/*` (TL direct) or FastAPI + Pixeltable, toggled by `NEXT_PUBLIC_API_BASE`. Keeps the demo runnable without the backend.
-2. **Scene-level retrieval** — `video_scenes` is the primary index; `title_marengo` is the fallback when scene embedding or the Embed API fails. All rec + search paths use both helpers in `backend/routers/videos.py`.
-3. **`user_metadata` as source of truth** — Creator / category / upload date live in Twelve Labs, not in local JSON. `scripts/update_tl_metadata.py` writes; runtime only reads.
-4. **Analyze as computed columns** — Topic / style / tone run automatically on INSERT, so attribute-based recommendation reasons are always available.
-5. **Diversity + hybrid discovery** — 70 / 30 subscription / discovery split with max 2 videos per creator. Prevents the classic filter bubble without abandoning subscribed creators.
-6. **Local-first Pixeltable** — `PIXELTABLE_HOME=./data` under `backend/` so other Pixeltable projects on the same machine stay untouched. `pxt.drop_dir(substack_rec)` is the safe reset — never delete `~/.pixeltable`.
-7. **Resilience by default** — Twelve Labs rate-limits, 502s, and file-size limits all degrade gracefully to title similarity or empty results rather than 500s or hung frontends.
+2. **TL Search API for text search** — Text search calls Twelve Labs Search API directly (returns scene-level timestamps + thumbnails). Falls back to Pixeltable title_marengo similarity when TL API is unavailable or for creator-filtered queries.
+3. **Recommendations via Pixeltable** — For-you / similar / creator-catalog still use Pixeltable title_marengo embeddings for similarity. TL Search API is only used for the search endpoint.
+4. **`user_metadata` as source of truth** — Creator / category / upload date live in Twelve Labs, not in local JSON. `scripts/update_tl_metadata.py` writes; runtime only reads.
+5. **Analyze as computed columns** — Topic / style / tone run automatically on INSERT, so attribute-based recommendation reasons are always available.
+6. **Diversity + hybrid discovery** — 70 / 30 subscription / discovery split with max 2 videos per creator. Prevents the classic filter bubble without abandoning subscribed creators.
+7. **Reason + attributes separation** — `generate_reason` returns a short "Because you watched X" string. `_matched_attrs` returns topic/style/tone/creator context as separate pills for visual display.
+8. **Video files on R2** — YouTube blocks data center IPs, so videos are hosted on Cloudflare R2 (`tl-substack-style-app` bucket, public URL). `download_videos.py` fetches from R2 instead of YouTube.
+9. **Render deployment** — Blueprint-based deploy from `render.yaml`. Persistent disk at `/var/pixeltable` stores embedded Postgres + video files. Entrypoint script fixes pgdata permissions on redeploy.
+10. **Resilience by default** — Twelve Labs rate-limits, 502s, and file-size limits all degrade gracefully to title similarity or empty results rather than 500s or hung frontends.
+
+## Deployment
+
+### Production URLs
+- **Frontend**: https://substack-style-rec.vercel.app
+- **Backend**: https://substack-rec-api-g2ui.onrender.com
+- **R2 Videos**: https://pub-3d90ba141b2a453d9ada94f279c78419.r2.dev/
+
+### Render Setup
+1. Blueprint from `render.yaml` → creates web service (Starter, $7/mo) + disk (20 GB, $5/mo).
+2. Set env vars: `TWELVELABS_API_KEY`, `CORS_ORIGINS`, `TWELVELABS_INDEX_ID`.
+3. After deploy, Shell: `uv run download_videos.py --full && uv run setup_pixeltable.py --full`
+4. Manual Deploy to restart server with populated DB.
+5. If PostgreSQL lock errors after redeploy: `rm -f /var/pixeltable/pgdata/.s.PGSQL.5432.lock /var/pixeltable/pgdata/.s.PGSQL.5432 /var/pixeltable/pgdata/postmaster.pid`
+
+### Cloudflare R2
+- Bucket: `tl-substack-style-app` (25 video files, ~3.4 GB)
+- Public URL enabled. Files have URL-safe names (special chars removed from originals).
+- Upload via `npx wrangler r2 object put --remote` (< 300 MB) or `aws s3 cp --endpoint-url` (> 300 MB).
 
 ## Environment Variables
 
@@ -119,8 +151,27 @@ NEXT_PUBLIC_API_BASE=http://localhost:8000/api   # Optional: use Pixeltable back
 ```
 TWELVELABS_API_KEY=tlk_...
 TWELVELABS_INDEX_ID=69c37b6708cd679f8afbd748
-CORS_ORIGINS=http://localhost:3000
+CORS_ORIGINS=http://localhost:3000,http://localhost:3002
 PIXELTABLE_HOME=./data                            # Optional: scope Pixeltable to this repo
 ```
 
+### Render (set in dashboard, not committed)
+```
+TWELVELABS_API_KEY=tlk_...
+TWELVELABS_INDEX_ID=69c37b6708cd679f8afbd748
+CORS_ORIGINS=https://substack-style-rec.vercel.app
+PIXELTABLE_HOME=/var/pixeltable
+```
+
 See [`README.md`](./README.md#quick-start) for the full run order.
+
+## Recent Changes (2026-04-22 → 2026-04-28)
+
+- **Recommendation explainability**: Separated reason (short text) from matchedAttributes (pills). Topic overlap prioritized, creator context added ("New creator: X", "From your subscriptions").
+- **Nav dropdowns**: Subscriptions (count + list + unsubscribe) and Watch History (thumbnails + reset all) added to navigation bar.
+- **TL Search API integration**: Text search now calls Twelve Labs Search API directly, returning scene-level start/end timestamps and scene thumbnails. No Pixeltable scene detection needed.
+- **Search UI overhaul**: Results show rank badge, scene time range, category pill next to title, and matched scene thumbnail. File upload search removed (not in PRD).
+- **Video download from R2**: Replaced yt-dlp with direct R2 downloads. Removed yt-dlp dependency.
+- **Render deployment**: Dockerfile moved to repo root, entrypoint fixes pgdata permissions. Blueprint-based deploy with persistent disk.
+- **Console logging**: Browser DevTools shows recommendation scores for For You and Similar endpoints.
+- **VideoPlayer startTime**: Supports `?t=` query param for scene-level deep linking from search results.

@@ -91,38 +91,26 @@ def generate_reason(
     target_video: dict,
     rec_source: str,
     subscriptions: set[str],
+    context: str = "similar",
 ) -> str:
-    """Generate a natural-language explanation for a recommendation."""
-    parts: list[str] = []
+    """Generate a short, human-readable reason for a recommendation.
 
+    context: "similar" when the source is the currently-playing video (watch
+    page sidebar); "for_you" when the source is drawn from watch history
+    (home feed).
+    """
     source_title = source_video.get("title", "")
-    if source_title:
-        parts.append(f"Because you watched '{source_title}'")
-
-    src_topics = set(source_video.get("topic") or [])
-    tgt_topics = set(target_video.get("topic") or [])
-    overlap = src_topics & tgt_topics
-    if overlap:
-        parts.append(f"Also covers {', '.join(list(overlap)[:2])}")
-
-    src_style = source_video.get("style")
-    tgt_style = target_video.get("style")
-    if src_style and tgt_style and src_style == tgt_style:
-        parts.append(f"Similar {tgt_style} format")
-
-    src_tone = source_video.get("tone")
-    tgt_tone = target_video.get("tone")
-    if src_tone and tgt_tone and src_tone == tgt_tone:
-        parts.append(f"Matching {tgt_tone} tone")
-
     target_creator = target_video.get("creator_id", "")
-    if target_creator in subscriptions:
-        parts.append("From a creator you subscribe to")
-    elif rec_source == "discovery":
-        parts.append("Discover a new creator")
 
-    if not parts:
-        return "Recommended for you"
-    if len(parts) == 1:
-        return parts[0]
-    return f"{parts[0]} — {' · '.join(parts[1:])}"
+    if source_title:
+        anchor = (
+            "the current video" if context == "similar" else "videos you've watched"
+        )
+        return (
+            f"Recommended because it shares visual elements and scenes with {anchor}."
+        )
+    if target_creator in subscriptions:
+        return "From a creator you follow."
+    if rec_source == "discovery":
+        return "A new creator that matches your taste."
+    return "Recommended based on your watch history."

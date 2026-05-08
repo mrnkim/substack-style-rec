@@ -54,6 +54,8 @@ class RecommendationResponse(CamelModel):
     score: float | None = None
     reason: str = ""
     matched_attributes: list[str] = Field(default_factory=list)
+    video_tags: list[str] = Field(default_factory=list)
+    context_tag: str | None = None
     source: Literal["subscription", "discovery"] = "discovery"
 
 
@@ -122,6 +124,9 @@ class CreatorCatalogResponse(BaseModel):
 class SearchResultItem(BaseModel):
     video: VideoResponse
     score: float
+    scene_start: float | None = None
+    scene_end: float | None = None
+    scene_thumbnail_url: str | None = None
 
 
 class SearchResponse(BaseModel):

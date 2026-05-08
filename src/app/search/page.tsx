@@ -1,10 +1,12 @@
 "use client";
 
 import { useSearchParams } from "next/navigation";
+import Link from "next/link";
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { getVideos, searchVideos, searchByFile } from "@/lib/api";
 import type { SearchResult } from "@/lib/api";
 import { VideoCard } from "@/components/video-card";
+import { formatDuration } from "@/lib/utils";
 import type { Video } from "@/lib/types";
 
 const ACCEPT_TYPES = "image/jpeg,image/png,image/webp,video/mp4,video/webm,audio/mpeg,audio/mp4,audio/wav";
@@ -88,7 +90,8 @@ function SearchResults() {
   const searchParams = useSearchParams();
   const query = searchParams.get("q") || "";
   const [textQuery, setTextQuery] = useState(query);
-  const [videos, setVideos] = useState<Video[] | null>(null);
+  const [results, setResults] = useState<SearchResult[] | null>(null);
+  const [browseVideos, setBrowseVideos] = useState<Video[] | null>(null);
   const [searchLabel, setSearchLabel] = useState(query);
   const [searchMessage, setSearchMessage] = useState<string | null>(null);
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
@@ -104,10 +107,12 @@ function SearchResults() {
     try {
       if (q) {
         const data = await searchVideos(q, { limit: 20 });
-        setVideos(data.results.map((r: SearchResult) => r.video));
+        setResults(data.results);
+        setBrowseVideos(null);
       } else {
         const v = await getVideos();
-        setVideos(v);
+        setBrowseVideos(v);
+        setResults(null);
       }
     } finally {
       setIsSearching(false);
@@ -120,7 +125,8 @@ function SearchResults() {
     setSearchMessage(null);
     try {
       const data = await searchByFile(file, { limit: 20 });
-      setVideos(data.results.map((r: SearchResult) => r.video));
+      setResults(data.results);
+      setBrowseVideos(null);
       setSearchLabel(data.query || file.name);
       if (data.message) setSearchMessage(data.message);
     } finally {
@@ -159,6 +165,7 @@ function SearchResults() {
   const handleRemoveFile = () => {
     setUploadedFile(null);
     setSearchLabel("");
+    setResults(null);
     doTextSearch(query);
   };
 
@@ -184,101 +191,60 @@ function SearchResults() {
   };
 
   const topics = ["AI", "music", "interview", "branding", "mathematics", "creator economy"];
+  const videos = results ? results.map((r) => r.video) : browseVideos;
   const loading = videos === null && !isSearching;
   const hasQuery = !!query || !!uploadedFile;
 
   return (
-    <div
-      className="pb-16 animate-fade-up"
-      onDragEnter={handleDragEnter}
-      onDragLeave={handleDragLeave}
-      onDragOver={handleDragOver}
-      onDrop={handleDrop}
-    >
-      {/* Drag overlay */}
-      {isDragging && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
-          <div className="flex flex-col items-center gap-4 p-12 border-2 border-dashed border-[var(--accent)] rounded-2xl bg-[var(--bg-card)]/80">
-            <div className="text-[var(--accent)]">
-              <svg className="w-12 h-12" viewBox="0 0 24 24" fill="none">
-                <path d="M12 16V4m0 0l-4 4m4-4l4 4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                <path d="M20 16v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-              </svg>
-            </div>
-            <p className="text-lg font-medium text-[var(--text-primary)]">Drop to search</p>
-            <p className="text-sm text-[var(--text-secondary)]">Image, video clip, or audio file</p>
-          </div>
-        </div>
-      )}
-
+    <div className="pb-16 animate-fade-up">
       <div className="px-8 pt-10 pb-6">
         <h1 className="text-3xl font-bold text-[var(--text-primary)] font-[family-name:var(--font-brand)] mb-2">
           Search
         </h1>
         <p className="text-sm text-[var(--text-secondary)] mb-6">
-          Search by text, or upload an image, video clip, or audio file for cross-modal search
+          Search videos by content using Twelve Labs semantic search
         </p>
 
-        {/* Search input row */}
+        {/* Search input */}
         <div className="max-w-2xl">
-          {uploadedFile ? (
-            <FilePreview file={uploadedFile} onRemove={handleRemoveFile} />
-          ) : (
-            <form onSubmit={handleTextSubmit} className="relative">
-              <div className="relative flex items-center gap-2">
-                <div className="relative flex-1">
-                  <svg
-                    className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-tertiary)] w-5 h-5"
-                    viewBox="0 0 16 16"
-                    fill="none"
-                  >
-                    <circle cx="7" cy="7" r="5.5" stroke="currentColor" strokeWidth="1.5" />
-                    <path d="M11 11L14.5 14.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+          <form onSubmit={handleTextSubmit} className="relative">
+            <div className="relative flex-1">
+              <svg
+                className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-tertiary)] w-5 h-5"
+                viewBox="0 0 16 16"
+                fill="none"
+              >
+                <circle cx="7" cy="7" r="5.5" stroke="currentColor" strokeWidth="1.5" />
+                <path d="M11 11L14.5 14.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+              </svg>
+              <input
+                type="text"
+                value={textQuery}
+                onChange={(e) => setTextQuery(e.target.value)}
+                placeholder="Search videos by content..."
+                autoFocus
+                className="w-full bg-[var(--bg-card)] border border-[var(--border-default)] text-[var(--text-primary)] placeholder:text-[var(--text-tertiary)] rounded-lg outline-none transition-all focus:border-[var(--accent)]/50 focus:ring-1 focus:ring-[var(--accent)]/20 pl-11 pr-10 py-3 text-base"
+              />
+              {textQuery && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setTextQuery("");
+                    setResults(null);
+                    setSearchLabel("");
+                    window.history.pushState({}, "", "/search");
+                    doTextSearch("");
+                  }}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--text-tertiary)] hover:text-[var(--text-primary)] transition-colors cursor-pointer"
+                  aria-label="Clear search"
+                >
+                  <svg className="w-4 h-4" viewBox="0 0 16 16" fill="none">
+                    <path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
                   </svg>
-                  <input
-                    type="text"
-                    value={textQuery}
-                    onChange={(e) => setTextQuery(e.target.value)}
-                    placeholder="Search videos by content..."
-                    autoFocus
-                    className="w-full bg-[var(--bg-card)] border border-[var(--border-default)] text-[var(--text-primary)] placeholder:text-[var(--text-tertiary)] rounded-lg outline-none transition-all focus:border-[var(--accent)]/50 focus:ring-1 focus:ring-[var(--accent)]/20 pl-11 pr-4 py-3 text-base"
-                  />
-                </div>
-
-                {/* Upload buttons */}
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept={ACCEPT_TYPES}
-                  onChange={handleFileInputChange}
-                  className="hidden"
-                />
-                <div className="flex items-center gap-1">
-                  {(["image", "video", "audio"] as const).map((mod) => (
-                    <button
-                      key={mod}
-                      type="button"
-                      onClick={() => {
-                        if (fileInputRef.current) {
-                          fileInputRef.current.accept =
-                            mod === "image"
-                              ? "image/jpeg,image/png,image/webp"
-                              : mod === "video"
-                                ? "video/mp4,video/webm"
-                                : "audio/mpeg,audio/mp4,audio/wav";
-                          fileInputRef.current.click();
-                        }
-                      }}
-                      title={`Search by ${mod}`}
-                      className="p-2.5 rounded-lg border border-[var(--border-default)] bg-[var(--bg-card)] text-[var(--text-tertiary)] hover:text-[var(--accent)] hover:border-[var(--accent)]/30 transition-all"
-                    >
-                      {modalityIcon(mod)}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </form>
-          )}
+                </button>
+              )}
+            </div>
+          </form>
         </div>
       </div>
 
@@ -310,13 +276,66 @@ function SearchResults() {
                 </>
               )}
             </p>
-            {videos.length > 0 ? (
+            {results && results.length > 0 ? (
               <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-5 stagger">
-                {videos.map((video) => (
-                  <div key={video.id} className="animate-fade-up">
-                    <VideoCard video={video} />
-                  </div>
-                ))}
+                {results.map((r, idx) => {
+                  const hasScene = r.scene_start != null && r.scene_end != null;
+                  const href = hasScene
+                    ? `/watch/${r.video.id}?t=${Math.floor(r.scene_start!)}`
+                    : `/watch/${r.video.id}`;
+                  const thumbnail = r.scene_thumbnail_url || r.video.thumbnailUrl;
+                  return (
+                    <Link key={r.video.id} href={href} className="video-card block animate-fade-up group">
+                      {/* Thumbnail */}
+                      <div className="relative aspect-video rounded-lg overflow-hidden bg-[var(--bg-elevated)]">
+                        <img
+                          src={thumbnail}
+                          alt={r.video.title}
+                          className="absolute inset-0 w-full h-full object-cover"
+                          loading="lazy"
+                        />
+                        {/* Rank badge */}
+                        <span className="absolute top-2 left-2 w-6 h-6 flex items-center justify-center text-[11px] font-bold rounded-md bg-black/70 text-[var(--text-primary)]">
+                          {idx + 1}
+                        </span>
+                        {/* Category pill — shown below with title */}
+                        {/* Scene duration or total duration */}
+                        <span className="absolute bottom-2 right-2 px-1.5 py-0.5 text-[10px] font-mono font-medium bg-black/70 text-[var(--text-primary)] rounded">
+                          {hasScene
+                            ? `${formatDuration(Math.floor(r.scene_start!))} – ${formatDuration(Math.floor(r.scene_end!))}`
+                            : formatDuration(r.video.duration)}
+                        </span>
+                        {/* Play overlay */}
+                        <div className="thumb-overlay rounded-lg">
+                          <div className="w-10 h-10 rounded-full bg-[var(--accent)] flex items-center justify-center shadow-lg">
+                            <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                              <path d="M4 2L14 8L4 14V2Z" fill="#1D1C1B" />
+                            </svg>
+                          </div>
+                        </div>
+                      </div>
+                      {/* Info */}
+                      <div className="mt-2.5 space-y-1">
+                        <div className="flex items-start gap-1.5">
+                          <h3 className="text-sm font-medium text-[var(--text-primary)] leading-snug line-clamp-2 group-hover:text-[var(--accent)] transition-colors flex-1">
+                            {r.video.title}
+                          </h3>
+                          <span className={`shrink-0 mt-0.5 px-2 py-0.5 text-[10px] font-medium rounded-full pill-${r.video.category}`}>
+                            {r.video.category}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <div className="w-4 h-4 rounded-full bg-[var(--bg-elevated)] flex items-center justify-center">
+                            <span className="text-[8px] font-bold text-[var(--text-tertiary)]">
+                              {r.video.creator.name[0]}
+                            </span>
+                          </div>
+                          <span className="text-xs text-[var(--text-secondary)]">{r.video.creator.name}</span>
+                        </div>
+                      </div>
+                    </Link>
+                  );
+                })}
               </div>
             ) : (
               <div className="py-20 text-center">
@@ -331,22 +350,6 @@ function SearchResults() {
         {/* Empty state: topic pills + browse all */}
         {!loading && !isSearching && videos && !hasQuery && (
           <>
-            {/* Multimodal hint */}
-            <div className="mb-8 p-4 rounded-xl border border-[var(--border-default)] bg-[var(--bg-card)]">
-              <h3 className="text-sm font-semibold text-[var(--text-primary)] mb-2 flex items-center gap-2">
-                <span className="text-[var(--accent)]">
-                  <svg className="w-4 h-4" viewBox="0 0 16 16" fill="none">
-                    <path d="M8 1l2 5h5l-4 3 1.5 5L8 11l-4.5 3L5 9 1 6h5l2-5z" fill="currentColor" />
-                  </svg>
-                </span>
-                Cross-Modal Search
-              </h3>
-              <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
-                Upload an image, short video clip, or audio file to find videos with matching content.
-                Powered by Twelve Labs Marengo 3.0 + Pixeltable scene detection — all modalities share the same embedding space.
-              </p>
-            </div>
-
             <div className="mb-8">
               <h2 className="text-sm font-semibold text-[var(--text-secondary)] uppercase tracking-wider mb-3">
                 Popular Topics
