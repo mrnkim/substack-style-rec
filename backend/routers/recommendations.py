@@ -235,19 +235,44 @@ def for_you(body: ForYouRequest):
     # If user has watched (almost) everything, don't exclude — just deprioritize
     exclude = watched if len(watched) < len(all_rows) - 2 else set()
 
+    # Recency-weighted aggregation across the last 5 watched videos.
+    # The most recent watch dominates (weight 0.5) but earlier watches still
+    # contribute, so a candidate that's broadly relevant to recent history
+    # outranks a one-hit anchor from the very first thing the user watched.
+    # Without weighting, a candidate that scored 0.9 against the first watch
+    # would lock in the top slot forever (max-aggregation), which made the
+    # For You row look static across navigations.
+    RECENCY_WEIGHTS = [0.5, 0.25, 0.125, 0.0625, 0.0625]
+    recent_watches = list(reversed(body.watch_history[-5:]))
+    total_weight = sum(RECENCY_WEIGHTS[: len(recent_watches)]) or 1.0
+
     candidate_scores: dict[str, dict] = {}
-    for wid in body.watch_history[-5:]:
+    for idx, wid in enumerate(recent_watches):
+        weight = RECENCY_WEIGHTS[idx] if idx < len(RECENCY_WEIGHTS) else 0.0
+        if weight <= 0:
+            continue
         w_vid = by_id.get(wid)
         if not w_vid:
             continue
         for c in _similarity_candidates(
             videos_t, w_vid, exclude, body.limit * 3
         ):
-            score = c.get("score") or 0.0
-            best = candidate_scores.get(c["id"], {}).get("score") or 0.0
-            if c["id"] not in candidate_scores or score > best:
-                c["_source_video"] = w_vid
-                candidate_scores[c["id"]] = c
+            contribution = (c.get("score") or 0.0) * weight
+            existing = candidate_scores.get(c["id"])
+            if existing is None:
+                new_row = dict(c)
+                new_row["score"] = contribution
+                # Iterating most-recent-first means the first contributor we
+                # see for a candidate is the most recent watch that produced it
+                new_row["_source_video"] = w_vid
+                candidate_scores[c["id"]] = new_row
+            else:
+                existing["score"] = (existing.get("score") or 0.0) + contribution
+
+    # Normalize summed weighted scores back to the underlying 0..1 similarity
+    # range so the displayed "Video Match: NN" stays interpretable.
+    for c in candidate_scores.values():
+        c["score"] = (c.get("score") or 0.0) / total_weight
 
     ranked = sorted(
         candidate_scores.values(), key=lambda x: x.get("score", 0), reverse=True
