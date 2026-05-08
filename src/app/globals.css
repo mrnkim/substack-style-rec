@@ -193,20 +193,22 @@ body {
 
 /* ── Attribute pills (recommendation explanations) ─── */
 
-.attr-pill {
-  display: inline-block;
-  padding: 2.5px 10px;
-  font-size: 11px;
-  font-weight: 500;
-  line-height: 1.5;
-  color: var(--text-primary);
-  background: rgba(244, 243, 243, 0.06);
-  border: 1px solid var(--border-accent);
-  border-radius: 100px;
-  white-space: nowrap;
-  max-width: 220px;
-  overflow: hidden;
-  text-overflow: ellipsis;
+@layer components {
+  .attr-pill {
+    display: inline-block;
+    padding: 2.5px 10px;
+    font-size: 11px;
+    font-weight: 500;
+    line-height: 1.5;
+    color: var(--text-primary);
+    background: rgba(244, 243, 243, 0.06);
+    border: 1px solid var(--border-accent);
+    border-radius: 100px;
+    white-space: nowrap;
+    max-width: 220px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
 }
 
 /* ── Category pills ─── */
