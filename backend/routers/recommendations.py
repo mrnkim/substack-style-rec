@@ -212,11 +212,14 @@ def for_you(body: ForYouRequest):
                 unwatched, key=lambda v: v.get("upload_date", ""), reverse=True
             )
 
+        # Cold start has no signal to explain — leave reason and tags blank
+        # so the frontend hides the rec-block entirely instead of stamping
+        # every card with an identical "Discover / New to you" box.
         recs = [
             RecommendationResponse(
                 video=_build_video_response(v, creators_map),
                 score=None,
-                reason="New to you",
+                reason="",
                 matched_attributes=[],
                 source="subscription"
                 if v.get("creator_id") in subscriptions
