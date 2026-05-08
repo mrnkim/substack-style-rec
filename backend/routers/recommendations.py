@@ -39,6 +39,22 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/recommendations", tags=["recommendations"])
 
 
+# For-you aggregates similarity across multiple watched videos, so each
+# watched video doesn't need full scene coverage — neighbouring scenes have
+# highly correlated Marengo embeddings, and information cross-pollinates
+# across the 5 ref videos. Sampling here drops the cold for-you fetch from
+# ~20–37 s to ~3–5 s (5 watched × 6 scenes vs 5 × ~50 scenes).
+FOR_YOU_REF_SCENES_PER_VIDEO = 6
+
+
+def _sample_evenly(items: list, n: int) -> list:
+    """Return up to n items uniformly spaced across the input list."""
+    if len(items) <= n or n <= 0:
+        return list(items)
+    step = len(items) / n
+    return [items[int(i * step)] for i in range(n)]
+
+
 def _apply_diversity(candidates: list[dict], max_per_creator: int = 2) -> list[dict]:
     counts: dict[str, int] = defaultdict(int)
     result: list[dict] = []
@@ -56,6 +72,7 @@ def _similarity_candidates(
     exclude_ids: set[str],
     limit: int,
     creator_id: str | None = None,
+    max_ref_scenes: int | None = None,
 ) -> list[dict]:
     """Find videos similar to `ref` using its stored scene embeddings.
 
@@ -63,6 +80,11 @@ def _similarity_candidates(
     the `scene_marengo` index. Results are aggregated per target video, keeping
     the row with the highest similarity score across any (ref scene, target
     scene) pair. Always excludes the reference video itself.
+
+    `max_ref_scenes` caps the number of ref scenes queried via uniform sampling.
+    The caller should pass it for hot paths where multi-video aggregation makes
+    full per-scene coverage cost-prohibitive (e.g. for-you across 5 watched
+    videos). Defaults to no cap.
 
     Falls back to title-text similarity only if the scene index or the
     reference's stored embeddings are unavailable (e.g., scene detection failed
@@ -75,8 +97,13 @@ def _similarity_candidates(
     if scenes_t is not None and ref_id:
         ref_embs = _scene_embeddings_for_video(scenes_t, ref_id)
         if ref_embs:
+            sampled_embs = (
+                _sample_evenly(ref_embs, max_ref_scenes)
+                if max_ref_scenes
+                else ref_embs
+            )
             best: dict[str, dict] = {}
-            for vec in ref_embs:
+            for vec in sampled_embs:
                 try:
                     rows = _scene_vector_similarity(
                         scenes_t, vec, exclude_with_self, limit, creator_id
@@ -95,8 +122,8 @@ def _similarity_candidates(
             )
             if ranked:
                 logger.info(
-                    "  [scene index] %d ref scenes → %d candidates",
-                    len(ref_embs), len(ranked),
+                    "  [scene index] %d/%d ref scenes → %d candidates",
+                    len(sampled_embs), len(ref_embs), len(ranked),
                 )
                 return ranked[:limit]
 
@@ -212,11 +239,14 @@ def for_you(body: ForYouRequest):
                 unwatched, key=lambda v: v.get("upload_date", ""), reverse=True
             )
 
+        # Cold start has no signal to explain — leave reason and tags blank
+        # so the frontend hides the rec-block entirely instead of stamping
+        # every card with an identical "Discover / New to you" box.
         recs = [
             RecommendationResponse(
                 video=_build_video_response(v, creators_map),
                 score=None,
-                reason="New to you",
+                reason="",
                 matched_attributes=[],
                 source="subscription"
                 if v.get("creator_id") in subscriptions
@@ -235,19 +265,48 @@ def for_you(body: ForYouRequest):
     # If user has watched (almost) everything, don't exclude — just deprioritize
     exclude = watched if len(watched) < len(all_rows) - 2 else set()
 
+    # Recency-weighted aggregation across the last 5 watched videos.
+    # The most recent watch dominates (weight 0.5) but earlier watches still
+    # contribute, so a candidate that's broadly relevant to recent history
+    # outranks a one-hit anchor from the very first thing the user watched.
+    # Without weighting, a candidate that scored 0.9 against the first watch
+    # would lock in the top slot forever (max-aggregation), which made the
+    # For You row look static across navigations.
+    RECENCY_WEIGHTS = [0.5, 0.25, 0.125, 0.0625, 0.0625]
+    recent_watches = list(reversed(body.watch_history[-5:]))
+    total_weight = sum(RECENCY_WEIGHTS[: len(recent_watches)]) or 1.0
+
     candidate_scores: dict[str, dict] = {}
-    for wid in body.watch_history[-5:]:
+    for idx, wid in enumerate(recent_watches):
+        weight = RECENCY_WEIGHTS[idx] if idx < len(RECENCY_WEIGHTS) else 0.0
+        if weight <= 0:
+            continue
         w_vid = by_id.get(wid)
         if not w_vid:
             continue
         for c in _similarity_candidates(
-            videos_t, w_vid, exclude, body.limit * 3
+            videos_t,
+            w_vid,
+            exclude,
+            body.limit * 3,
+            max_ref_scenes=FOR_YOU_REF_SCENES_PER_VIDEO,
         ):
-            score = c.get("score") or 0.0
-            best = candidate_scores.get(c["id"], {}).get("score") or 0.0
-            if c["id"] not in candidate_scores or score > best:
-                c["_source_video"] = w_vid
-                candidate_scores[c["id"]] = c
+            contribution = (c.get("score") or 0.0) * weight
+            existing = candidate_scores.get(c["id"])
+            if existing is None:
+                new_row = dict(c)
+                new_row["score"] = contribution
+                # Iterating most-recent-first means the first contributor we
+                # see for a candidate is the most recent watch that produced it
+                new_row["_source_video"] = w_vid
+                candidate_scores[c["id"]] = new_row
+            else:
+                existing["score"] = (existing.get("score") or 0.0) + contribution
+
+    # Normalize summed weighted scores back to the underlying 0..1 similarity
+    # range so the displayed "Video Match: NN" stays interpretable.
+    for c in candidate_scores.values():
+        c["score"] = (c.get("score") or 0.0) / total_weight
 
     ranked = sorted(
         candidate_scores.values(), key=lambda x: x.get("score", 0), reverse=True
