@@ -39,6 +39,22 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/recommendations", tags=["recommendations"])
 
 
+# For-you aggregates similarity across multiple watched videos, so each
+# watched video doesn't need full scene coverage — neighbouring scenes have
+# highly correlated Marengo embeddings, and information cross-pollinates
+# across the 5 ref videos. Sampling here drops the cold for-you fetch from
+# ~20–37 s to ~3–5 s (5 watched × 6 scenes vs 5 × ~50 scenes).
+FOR_YOU_REF_SCENES_PER_VIDEO = 6
+
+
+def _sample_evenly(items: list, n: int) -> list:
+    """Return up to n items uniformly spaced across the input list."""
+    if len(items) <= n or n <= 0:
+        return list(items)
+    step = len(items) / n
+    return [items[int(i * step)] for i in range(n)]
+
+
 def _apply_diversity(candidates: list[dict], max_per_creator: int = 2) -> list[dict]:
     counts: dict[str, int] = defaultdict(int)
     result: list[dict] = []
@@ -56,6 +72,7 @@ def _similarity_candidates(
     exclude_ids: set[str],
     limit: int,
     creator_id: str | None = None,
+    max_ref_scenes: int | None = None,
 ) -> list[dict]:
     """Find videos similar to `ref` using its stored scene embeddings.
 
@@ -63,6 +80,11 @@ def _similarity_candidates(
     the `scene_marengo` index. Results are aggregated per target video, keeping
     the row with the highest similarity score across any (ref scene, target
     scene) pair. Always excludes the reference video itself.
+
+    `max_ref_scenes` caps the number of ref scenes queried via uniform sampling.
+    The caller should pass it for hot paths where multi-video aggregation makes
+    full per-scene coverage cost-prohibitive (e.g. for-you across 5 watched
+    videos). Defaults to no cap.
 
     Falls back to title-text similarity only if the scene index or the
     reference's stored embeddings are unavailable (e.g., scene detection failed
@@ -75,8 +97,13 @@ def _similarity_candidates(
     if scenes_t is not None and ref_id:
         ref_embs = _scene_embeddings_for_video(scenes_t, ref_id)
         if ref_embs:
+            sampled_embs = (
+                _sample_evenly(ref_embs, max_ref_scenes)
+                if max_ref_scenes
+                else ref_embs
+            )
             best: dict[str, dict] = {}
-            for vec in ref_embs:
+            for vec in sampled_embs:
                 try:
                     rows = _scene_vector_similarity(
                         scenes_t, vec, exclude_with_self, limit, creator_id
@@ -95,8 +122,8 @@ def _similarity_candidates(
             )
             if ranked:
                 logger.info(
-                    "  [scene index] %d ref scenes → %d candidates",
-                    len(ref_embs), len(ranked),
+                    "  [scene index] %d/%d ref scenes → %d candidates",
+                    len(sampled_embs), len(ref_embs), len(ranked),
                 )
                 return ranked[:limit]
 
@@ -258,7 +285,11 @@ def for_you(body: ForYouRequest):
         if not w_vid:
             continue
         for c in _similarity_candidates(
-            videos_t, w_vid, exclude, body.limit * 3
+            videos_t,
+            w_vid,
+            exclude,
+            body.limit * 3,
+            max_ref_scenes=FOR_YOU_REF_SCENES_PER_VIDEO,
         ):
             contribution = (c.get("score") or 0.0) * weight
             existing = candidate_scores.get(c["id"])
