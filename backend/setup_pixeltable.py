@@ -26,7 +26,12 @@ import pixeltable as pxt
 from pixeltable.functions.twelvelabs import embed
 
 import config
-from functions import analyze_video, fetch_tl_segments
+from functions import (
+    analyze_video,
+    chapters_for_video,
+    fetch_tl_segments,
+    summarize_video,
+)
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
@@ -86,6 +91,14 @@ def setup(full: bool = False):
     videos.add_computed_column(topic=videos.raw_attributes["topic"], if_exists="ignore")
     videos.add_computed_column(style=videos.raw_attributes["style"], if_exists="ignore")
     videos.add_computed_column(tone=videos.raw_attributes["tone"], if_exists="ignore")
+
+    # Summary + chapters via Twelve Labs Generate API (/summarize)
+    videos.add_computed_column(
+        summary=summarize_video(videos.id), if_exists="ignore"
+    )
+    videos.add_computed_column(
+        chapters=chapters_for_video(videos.id), if_exists="ignore"
+    )
 
     # TL retrieve: precomputed visual segment embeddings
     videos.add_computed_column(

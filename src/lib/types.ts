@@ -30,6 +30,13 @@ export interface VideoAttributes {
   tone: VideoTone;
 }
 
+export interface Chapter {
+  start: number;
+  end: number;
+  title: string;
+  summary: string;
+}
+
 export interface Video {
   id: string;
   title: string;
@@ -40,6 +47,8 @@ export interface Video {
   hlsUrl?: string;
   uploadDate: string;
   attributes?: VideoAttributes;
+  summary?: string;
+  chapters?: Chapter[];
 }
 
 export interface Recommendation {

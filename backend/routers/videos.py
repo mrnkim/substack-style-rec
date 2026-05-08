@@ -14,6 +14,7 @@ import pixeltable as pxt
 
 import config
 from models import (
+    ChapterResponse,
     CreatorResponse,
     PaginatedVideosResponse,
     VideoAttributesResponse,
@@ -96,7 +97,8 @@ def _hydrate_scene_rows(
 
 
 ATTR_FIELDS = ("topic", "style", "tone")
-ALL_FIELDS = VIDEO_FIELDS + ATTR_FIELDS
+GENERATED_FIELDS = ("summary", "chapters")
+ALL_FIELDS = VIDEO_FIELDS + ATTR_FIELDS + GENERATED_FIELDS
 
 
 def _select_videos(videos_t, query=None, include_attrs: bool = True):
@@ -266,6 +268,25 @@ def _build_video_response(row: dict, creators_map: dict[str, dict]) -> VideoResp
             tone=row.get("tone") or "",
         )
 
+    chapters_raw = row.get("chapters")
+    chapters = (
+        [
+            ChapterResponse(
+                start=float(c.get("start", 0) or 0),
+                end=float(c.get("end", 0) or 0),
+                title=str(c.get("title", "") or ""),
+                summary=str(c.get("summary", "") or ""),
+            )
+            for c in chapters_raw
+            if isinstance(c, dict)
+        ]
+        if isinstance(chapters_raw, list) and chapters_raw
+        else None
+    )
+
+    summary_raw = row.get("summary")
+    summary = summary_raw.strip() if isinstance(summary_raw, str) and summary_raw.strip() else None
+
     return VideoResponse(
         id=row["id"],
         title=row.get("title", ""),
@@ -282,6 +303,8 @@ def _build_video_response(row: dict, creators_map: dict[str, dict]) -> VideoResp
         hls_url=row.get("hls_url"),
         upload_date=row.get("upload_date", ""),
         attributes=attributes,
+        summary=summary,
+        chapters=chapters,
     )
 
 

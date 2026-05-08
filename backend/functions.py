@@ -130,6 +130,67 @@ def analyze_video(video_id: str) -> dict:
 
 
 # ---------------------------------------------------------------------------
+# Summary + chapters generation (TL Generate API — /summarize)
+# ---------------------------------------------------------------------------
+
+
+def _summarize(video_id: str, summary_type: str, timeout: float = 180.0) -> dict:
+    """Single internal call to TL /summarize with the given type."""
+    url = f"{config.TWELVELABS_BASE_URL}/summarize"
+    headers = {
+        "x-api-key": config.TWELVELABS_API_KEY,
+        "Content-Type": "application/json",
+    }
+    payload = {"video_id": video_id, "type": summary_type}
+    resp = httpx.post(url, json=payload, headers=headers, timeout=timeout)
+    resp.raise_for_status()
+    return resp.json()
+
+
+@pxt.udf
+def summarize_video(video_id: str) -> str:
+    """Generate a short paragraph-length summary of the video."""
+    try:
+        data = _summarize(video_id, "summary")
+        return str(data.get("summary", "")).strip()
+    except Exception as e:
+        logger.warning("Summary API failed for video %s: %s", video_id, e)
+        return ""
+
+
+@pxt.udf
+def chapters_for_video(video_id: str) -> list:
+    """Generate ordered chapter timeline.
+
+    Each chapter is `{start, end, title, summary}` in seconds. Empty list on
+    failure so the UI gracefully hides the section.
+    """
+    try:
+        data = _summarize(video_id, "chapter")
+        raw = data.get("chapters") or []
+        chapters: list[dict] = []
+        for c in raw:
+            try:
+                start = float(c.get("start") or c.get("start_sec") or 0)
+                end = float(c.get("end") or c.get("end_sec") or 0)
+            except (TypeError, ValueError):
+                continue
+            title = str(
+                c.get("chapter_title") or c.get("title") or ""
+            ).strip()
+            summary = str(
+                c.get("chapter_summary") or c.get("summary") or ""
+            ).strip()
+            chapters.append(
+                {"start": start, "end": end, "title": title, "summary": summary}
+            )
+        return chapters
+    except Exception as e:
+        logger.warning("Chapter API failed for video %s: %s", video_id, e)
+        return []
+
+
+# ---------------------------------------------------------------------------
 # Recommendation reason generation
 # ---------------------------------------------------------------------------
 

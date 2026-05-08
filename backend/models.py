@@ -37,6 +37,13 @@ class VideoAttributesResponse(CamelModel):
     tone: str = ""
 
 
+class ChapterResponse(CamelModel):
+    start: float
+    end: float
+    title: str = ""
+    summary: str = ""
+
+
 class VideoResponse(CamelModel):
     id: str
     title: str
@@ -47,6 +54,8 @@ class VideoResponse(CamelModel):
     hls_url: str | None = None
     upload_date: str = ""
     attributes: VideoAttributesResponse | None = None
+    summary: str | None = None
+    chapters: list[ChapterResponse] | None = None
 
 
 class RecommendationResponse(CamelModel):
