@@ -30,7 +30,7 @@ from pixeltable.functions.twelvelabs import embed
 from pixeltable.functions.video import video_splitter
 
 import config
-from functions import analyze_video
+from functions import analyze_video, chapters_for_video, summarize_video
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
@@ -98,6 +98,14 @@ def setup(full: bool = False):
     videos.add_computed_column(topic=videos.raw_attributes["topic"], if_exists="ignore")
     videos.add_computed_column(style=videos.raw_attributes["style"], if_exists="ignore")
     videos.add_computed_column(tone=videos.raw_attributes["tone"], if_exists="ignore")
+
+    # Summary + chapters via Twelve Labs Generate API (/summarize)
+    videos.add_computed_column(
+        summary=summarize_video(videos.id), if_exists="ignore"
+    )
+    videos.add_computed_column(
+        chapters=chapters_for_video(videos.id), if_exists="ignore"
+    )
     logger.info("  Schema ready")
 
     # -- Data from Twelve Labs index ------------------------------------------
