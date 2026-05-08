@@ -15,7 +15,7 @@ services:
     name: substack-rec-api
     runtime: docker
     dockerfilePath: ./Dockerfile
-    plan: starter                # Disks require Starter or higher.
+    plan: standard               # 2GB RAM / 1 CPU — Starter (512MB) OOMs during scene_detect.
     region: oregon               # Match your Vercel region if latency matters.
     healthCheckPath: /health
     autoDeploy: true
