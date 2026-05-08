@@ -7,8 +7,8 @@ import { getVideo, getSimilarVideos } from "@/lib/api";
 import { useUserState } from "@/lib/user-state";
 import { SubscribeButton } from "@/components/subscribe-button";
 import { VideoCard } from "@/components/video-card";
-import { VideoPlayer } from "@/components/video-player";
-import { timeAgo } from "@/lib/utils";
+import { VideoPlayer, type VideoPlayerHandle } from "@/components/video-player";
+import { formatDuration, timeAgo } from "@/lib/utils";
 import type { Video, Recommendation } from "@/lib/types";
 
 export default function WatchPage({ params }: { params: Promise<{ id: string }> }) {
@@ -22,6 +22,7 @@ export default function WatchPage({ params }: { params: Promise<{ id: string }> 
   const [similarLoading, setSimilarLoading] = useState(true);
   const watchHistoryRef = useRef(watchHistory);
   watchHistoryRef.current = watchHistory;
+  const playerRef = useRef<VideoPlayerHandle>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -78,6 +79,7 @@ export default function WatchPage({ params }: { params: Promise<{ id: string }> 
         <div className="flex-1 min-w-0">
           {/* Video Player */}
           <VideoPlayer
+            ref={playerRef}
             hlsUrl={video.hlsUrl}
             thumbnailUrl={video.thumbnailUrl}
             title={video.title}
@@ -142,6 +144,51 @@ export default function WatchPage({ params }: { params: Promise<{ id: string }> 
                     {video.attributes.tone}
                   </span>
                 </div>
+              </div>
+            )}
+
+            {/* Summary — TL Generate API */}
+            {video.summary && (
+              <div className="p-4 rounded-lg bg-[var(--bg-card)] border border-[var(--border-default)]">
+                <h3 className="text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wider mb-2">
+                  Summary
+                </h3>
+                <p className="text-sm text-[var(--text-primary)] leading-relaxed whitespace-pre-line">
+                  {video.summary}
+                </p>
+              </div>
+            )}
+
+            {/* Chapters — click to seek */}
+            {video.chapters && video.chapters.length > 0 && (
+              <div className="p-4 rounded-lg bg-[var(--bg-card)] border border-[var(--border-default)]">
+                <h3 className="text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wider mb-3">
+                  Chapters
+                </h3>
+                <ul className="space-y-1">
+                  {video.chapters.map((ch, i) => (
+                    <li key={`${ch.start}-${i}`}>
+                      <button
+                        onClick={() => playerRef.current?.seekTo(ch.start)}
+                        className="w-full text-left flex items-start gap-3 px-3 py-2 rounded-md hover:bg-[var(--bg-hover)] transition-colors group cursor-pointer"
+                      >
+                        <span className="shrink-0 mt-0.5 text-xs font-mono font-medium text-[var(--accent)] tabular-nums w-12">
+                          {formatDuration(Math.round(ch.start))}
+                        </span>
+                        <span className="flex-1 min-w-0">
+                          <span className="block text-sm font-medium text-[var(--text-primary)] group-hover:text-[var(--accent)] transition-colors leading-snug">
+                            {ch.title || `Chapter ${i + 1}`}
+                          </span>
+                          {ch.summary && (
+                            <span className="block mt-0.5 text-xs text-[var(--text-tertiary)] leading-relaxed line-clamp-2">
+                              {ch.summary}
+                            </span>
+                          )}
+                        </span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
               </div>
             )}
           </div>
