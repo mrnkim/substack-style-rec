@@ -15,7 +15,7 @@ export default function WatchPage({ params }: { params: Promise<{ id: string }> 
   const { id } = use(params);
   const searchParams = useSearchParams();
   const startTime = Number(searchParams.get("t")) || 0;
-  const { markWatched, watchHistory } = useUserState();
+  const { markWatched, watchHistory, isSubscribed } = useUserState();
   const [video, setVideo] = useState<Video | null>(null);
   const [similar, setSimilar] = useState<Recommendation[]>([]);
   const [videoLoading, setVideoLoading] = useState(true);
@@ -222,20 +222,30 @@ export default function WatchPage({ params }: { params: Promise<{ id: string }> 
             </p>
           ) : (
             <div className="space-y-4 stagger">
-              {similar.map((rec) => (
-                <div key={rec.video.id} className="animate-fade-up">
-                  <VideoCard
-                    video={rec.video}
-                    reason={rec.reason}
-                    matchedAttributes={rec.matchedAttributes}
-                    videoTags={rec.videoTags}
-                    contextTag={rec.contextTag}
-                    source={rec.source}
-                    score={rec.score}
-                    size="sm"
-                  />
-                </div>
-              ))}
+              {similar.map((rec) => {
+                // Recompute subscription-derived fields client-side so the
+                // badge and contextTag react to live subscription toggles
+                // without re-fetching /similar.
+                const subscribed = isSubscribed(rec.video.creator.id);
+                const liveSource = subscribed ? "subscription" : "discovery";
+                const liveContextTag = subscribed
+                  ? "From your subscriptions"
+                  : rec.contextTag;
+                return (
+                  <div key={rec.video.id} className="animate-fade-up">
+                    <VideoCard
+                      video={rec.video}
+                      reason={rec.reason}
+                      matchedAttributes={rec.matchedAttributes}
+                      videoTags={rec.videoTags}
+                      contextTag={liveContextTag}
+                      source={liveSource}
+                      score={rec.score}
+                      size="sm"
+                    />
+                  </div>
+                );
+              })}
             </div>
           )}
         </aside>
