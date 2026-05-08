@@ -18,27 +18,44 @@ export default function WatchPage({ params }: { params: Promise<{ id: string }> 
   const { markWatched, watchHistory } = useUserState();
   const [video, setVideo] = useState<Video | null>(null);
   const [similar, setSimilar] = useState<Recommendation[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [videoLoading, setVideoLoading] = useState(true);
+  const [similarLoading, setSimilarLoading] = useState(true);
   const watchHistoryRef = useRef(watchHistory);
   watchHistoryRef.current = watchHistory;
 
   useEffect(() => {
-    setLoading(true);
-    Promise.all([
-      getVideo(id),
-      getSimilarVideos(id, watchHistoryRef.current, 8),
-    ]).then(([v, recs]) => {
-      setVideo(v);
-      setSimilar(recs);
-      setLoading(false);
-    });
+    let cancelled = false;
+    setVideoLoading(true);
+    setSimilarLoading(true);
+    setVideo(null);
+    setSimilar([]);
+
+    getVideo(id)
+      .then((v) => {
+        if (!cancelled) setVideo(v);
+      })
+      .finally(() => {
+        if (!cancelled) setVideoLoading(false);
+      });
+
+    getSimilarVideos(id, watchHistoryRef.current, 8)
+      .then((recs) => {
+        if (!cancelled) setSimilar(recs);
+      })
+      .finally(() => {
+        if (!cancelled) setSimilarLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, [id]);
 
   useEffect(() => {
     if (video) markWatched(video.id);
   }, [video, markWatched]);
 
-  if (loading) {
+  if (videoLoading) {
     return (
       <div className="flex items-center justify-center h-[60vh]">
         <div className="w-6 h-6 border-2 border-[var(--accent)] border-t-transparent rounded-full animate-spin" />
@@ -132,22 +149,48 @@ export default function WatchPage({ params }: { params: Promise<{ id: string }> 
 
         {/* Sidebar — similar videos */}
         <aside className="w-full lg:w-[340px] flex-shrink-0">
-          <h2 className="text-sm font-semibold text-[var(--text-secondary)] uppercase tracking-wider mb-4">
-            Up Next
-          </h2>
-          <div className="space-y-4 stagger">
-            {similar.map((rec) => (
-              <div key={rec.video.id} className="animate-fade-up">
-                <VideoCard
-                  video={rec.video}
-                  reason={rec.reason}
-                  matchedAttributes={rec.matchedAttributes}
-                  source={rec.source}
-                  size="sm"
-                />
-              </div>
-            ))}
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-sm font-semibold text-[var(--text-secondary)] uppercase tracking-wider">
+              Up Next
+            </h2>
+            {similarLoading && (
+              <div className="w-3.5 h-3.5 border-2 border-[var(--accent)] border-t-transparent rounded-full animate-spin" />
+            )}
           </div>
+          {similarLoading ? (
+            <div className="space-y-4">
+              {Array.from({ length: 4 }).map((_, i) => (
+                <div key={i} className="animate-pulse">
+                  <div className="aspect-video rounded-lg bg-[var(--bg-elevated)]" />
+                  <div className="mt-2.5 space-y-1.5">
+                    <div className="h-3.5 rounded bg-[var(--bg-elevated)] w-5/6" />
+                    <div className="h-3 rounded bg-[var(--bg-elevated)] w-2/5" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : similar.length === 0 ? (
+            <p className="text-sm text-[var(--text-tertiary)]">
+              No similar videos yet.
+            </p>
+          ) : (
+            <div className="space-y-4 stagger">
+              {similar.map((rec) => (
+                <div key={rec.video.id} className="animate-fade-up">
+                  <VideoCard
+                    video={rec.video}
+                    reason={rec.reason}
+                    matchedAttributes={rec.matchedAttributes}
+                    videoTags={rec.videoTags}
+                    contextTag={rec.contextTag}
+                    source={rec.source}
+                    score={rec.score}
+                    size="sm"
+                  />
+                </div>
+              ))}
+            </div>
+          )}
         </aside>
       </div>
     </div>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef } from "react";
+import { useMemo, useRef } from "react";
 import type { Recommendation } from "@/lib/types";
 import { VideoCard } from "./video-card";
 
@@ -21,13 +21,25 @@ export function VideoRow({
 }: VideoRowProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
 
+  // Dedupe defensively — upstream sources (backend recs, /api/videos) can
+  // occasionally surface the same video twice, which would crash React with a
+  // duplicate-key warning.
+  const uniqueRecs = useMemo(() => {
+    const seen = new Set<string>();
+    return recommendations.filter((rec) => {
+      if (!rec?.video?.id || seen.has(rec.video.id)) return false;
+      seen.add(rec.video.id);
+      return true;
+    });
+  }, [recommendations]);
+
   const scroll = (direction: "left" | "right") => {
     if (!scrollRef.current) return;
     const amount = direction === "left" ? -600 : 600;
     scrollRef.current.scrollBy({ left: amount, behavior: "smooth" });
   };
 
-  if (recommendations.length === 0) return null;
+  if (uniqueRecs.length === 0) return null;
 
   return (
     <section className="animate-fade-up">
@@ -54,13 +66,16 @@ export function VideoRow({
 
         {/* Cards */}
         <div ref={scrollRef} className="scroll-row stagger">
-          {recommendations.map((rec) => (
+          {uniqueRecs.map((rec) => (
             <VideoCard
               key={rec.video.id}
               video={rec.video}
               reason={showReasons ? rec.reason : undefined}
               matchedAttributes={showReasons ? rec.matchedAttributes : undefined}
+              videoTags={showReasons ? rec.videoTags : undefined}
+              contextTag={showReasons ? rec.contextTag : undefined}
               source={showReasons ? rec.source : undefined}
+              score={showReasons ? rec.score : undefined}
               size={cardSize}
             />
           ))}

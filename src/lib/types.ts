@@ -47,6 +47,8 @@ export interface Recommendation {
   score: number;
   reason: string;
   matchedAttributes: string[];
+  videoTags?: string[];
+  contextTag?: string | null;
   source: "subscription" | "discovery";
 }
 

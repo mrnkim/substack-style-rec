@@ -10,7 +10,10 @@ interface VideoCardProps {
   thumbnailOverride?: string;
   reason?: string;
   matchedAttributes?: string[];
+  videoTags?: string[];
+  contextTag?: string | null;
   source?: "subscription" | "discovery";
+  score?: number;
   showCreator?: boolean;
   size?: "sm" | "md" | "lg";
 }
@@ -27,11 +30,23 @@ export function VideoCard({
   thumbnailOverride,
   reason,
   matchedAttributes,
+  videoTags,
+  contextTag,
   source,
+  score,
   showCreator = true,
   size = "md",
 }: VideoCardProps) {
   const thumbnail = thumbnailOverride || video.thumbnailUrl;
+  const matchPct =
+    typeof score === "number" && score > 0
+      ? Math.min(100, Math.max(0, Math.round(score * 100)))
+      : null;
+  const sharedTags = matchedAttributes ?? [];
+  const fallbackTags = videoTags ?? [];
+  const tagsToShow = sharedTags.length > 0 ? sharedTags : fallbackTags;
+  const tagsLabel = sharedTags.length > 0 ? "Common Tags" : "About This Video";
+  const hasRecBlock = !!reason || matchPct !== null;
   return (
     <Link href={href ?? `/watch/${video.id}`} className={`video-card block ${sizeStyles[size]} group`}>
       {/* Thumbnail */}
@@ -91,9 +106,9 @@ export function VideoCard({
           </div>
         )}
 
-        {/* Recommendation reason + attributes */}
-        {reason && (
-          <div className="mt-1.5 space-y-1.5">
+        {/* Recommendation reason + match score + tags */}
+        {hasRecBlock && (
+          <div className="mt-2 p-2.5 rounded-lg bg-[var(--bg-card)] border border-[var(--border-default)] space-y-1.5">
             <div className="flex items-center gap-1.5">
               {source && (
                 <span
@@ -104,19 +119,54 @@ export function VideoCard({
                   {source === "subscription" ? "Following" : "Discover"}
                 </span>
               )}
-              <span className="text-[11px] text-[var(--text-tertiary)] line-clamp-2">{reason}</span>
+              {matchPct !== null && (
+                <span className="text-[11px] font-semibold text-[var(--text-primary)]">
+                  Video Match:{" "}
+                  <span className="text-[var(--accent)]">{matchPct}</span>
+                </span>
+              )}
             </div>
-            {matchedAttributes && matchedAttributes.length > 0 && (
-              <div className="flex flex-wrap gap-1">
-                {matchedAttributes.map((attr) => (
-                  <span
-                    key={attr}
-                    className="attr-pill"
+            {reason && (
+              <p className="text-[11px] leading-snug text-[var(--text-secondary)] line-clamp-3">
+                {reason}
+              </p>
+            )}
+            {tagsToShow.length > 0 && (
+              <div className="pt-1.5 border-t border-[var(--border-light)]">
+                <div className="flex items-center gap-1 mb-1.5">
+                  <svg
+                    width="10"
+                    height="10"
+                    viewBox="0 0 16 16"
+                    fill="none"
+                    className="text-[var(--accent)]"
+                    aria-hidden
                   >
-                    {attr}
+                    <path
+                      d="M2 6.5V2.5C2 2.22 2.22 2 2.5 2h4l7 7-4.5 4.5L2 6.5z"
+                      stroke="currentColor"
+                      strokeWidth="1.4"
+                      strokeLinejoin="round"
+                    />
+                    <circle cx="5" cy="5" r="1" fill="currentColor" />
+                  </svg>
+                  <span className="text-[10px] font-semibold uppercase tracking-wider text-[var(--text-secondary)]">
+                    {tagsLabel}
                   </span>
-                ))}
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {tagsToShow.map((attr) => (
+                    <span key={attr} className="attr-pill">
+                      {attr}
+                    </span>
+                  ))}
+                </div>
               </div>
+            )}
+            {contextTag && (
+              <p className="text-[10px] text-[var(--text-tertiary)] italic">
+                {contextTag}
+              </p>
             )}
           </div>
         )}
