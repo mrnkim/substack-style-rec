@@ -2,6 +2,8 @@
 
 import json
 import logging
+import os
+from pathlib import Path
 
 import httpx
 import pixeltable as pxt
@@ -9,6 +11,26 @@ import pixeltable as pxt
 import config
 
 logger = logging.getLogger(__name__)
+
+# Pre-computed summary/chapters cache.
+#
+# /analyze on Render Starter (512 MB) keeps OOM-killing during setup, and the
+# /summarize endpoint was retired so generating these on-the-fly is the slow
+# path now. Locally we already produced the data, so we ship it as JSON in
+# `backend/data/summaries.json` and let the UDFs prefer the cache. New
+# videos that aren't in the JSON still hit the API.
+_CACHE_PATH = Path(__file__).resolve().parent / "summaries.json"
+_SUMMARIES_CACHE: dict[str, dict] = {}
+try:
+    if _CACHE_PATH.exists():
+        with _CACHE_PATH.open() as _f:
+            _SUMMARIES_CACHE = json.load(_f)
+        logger.info(
+            "Loaded summary/chapter cache for %d videos from %s",
+            len(_SUMMARIES_CACHE), _CACHE_PATH,
+        )
+except Exception as _e:
+    logger.warning("Could not load summary cache (%s): %s", _CACHE_PATH, _e)
 
 VALID_STYLES = frozenset(
     {
@@ -200,9 +222,35 @@ def _extract_json(text: str) -> str | None:
     return None
 
 
+def _normalize_chapters(raw) -> list[dict]:
+    """Coerce a list of chapter-like dicts to {start, end, title, summary}."""
+    out: list[dict] = []
+    if not isinstance(raw, list):
+        return out
+    for c in raw:
+        if not isinstance(c, dict):
+            continue
+        try:
+            start = float(c.get("start") or c.get("start_sec") or 0)
+            end = float(c.get("end") or c.get("end_sec") or 0)
+        except (TypeError, ValueError):
+            continue
+        title = str(c.get("title") or c.get("chapter_title") or "").strip()
+        summary = str(c.get("summary") or c.get("chapter_summary") or "").strip()
+        out.append({"start": start, "end": end, "title": title, "summary": summary})
+    return out
+
+
 @pxt.udf
 def summarize_video(video_id: str) -> str:
-    """Generate a short paragraph-length summary of the video."""
+    """Generate a short paragraph-length summary of the video.
+
+    Prefers the pre-computed JSON cache. Falls back to /analyze for videos
+    not in the cache (e.g. newly added to the index).
+    """
+    cached = _SUMMARIES_CACHE.get(video_id, {}).get("summary")
+    if isinstance(cached, str) and cached.strip():
+        return cached.strip()
     try:
         return _analyze_text(video_id, SUMMARY_PROMPT)
     except Exception as e:
@@ -215,36 +263,19 @@ def chapters_for_video(video_id: str) -> list:
     """Generate ordered chapter timeline.
 
     Each chapter is `{start, end, title, summary}` in seconds. Empty list on
-    failure so the UI gracefully hides the section.
+    failure so the UI gracefully hides the section. Prefers the pre-computed
+    JSON cache; falls back to /analyze for un-cached videos.
     """
+    cached = _SUMMARIES_CACHE.get(video_id, {}).get("chapters")
+    if isinstance(cached, list) and cached:
+        return _normalize_chapters(cached)
     try:
         text = _analyze_text(video_id, CHAPTERS_PROMPT)
         json_blob = _extract_json(text)
         if not json_blob:
             logger.warning("No JSON found in chapter response for %s", video_id)
             return []
-        raw = json.loads(json_blob)
-        if not isinstance(raw, list):
-            return []
-        chapters: list[dict] = []
-        for c in raw:
-            if not isinstance(c, dict):
-                continue
-            try:
-                start = float(c.get("start") or c.get("start_sec") or 0)
-                end = float(c.get("end") or c.get("end_sec") or 0)
-            except (TypeError, ValueError):
-                continue
-            title = str(
-                c.get("title") or c.get("chapter_title") or ""
-            ).strip()
-            summary = str(
-                c.get("summary") or c.get("chapter_summary") or ""
-            ).strip()
-            chapters.append(
-                {"start": start, "end": end, "title": title, "summary": summary}
-            )
-        return chapters
+        return _normalize_chapters(json.loads(json_blob))
     except Exception as e:
         logger.warning("Chapter call failed for video %s: %s", video_id, e)
         return []
