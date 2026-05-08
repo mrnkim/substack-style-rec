@@ -15,7 +15,7 @@ npm start            # Serve production build
 
 # Backend (run from backend/ directory)
 uv sync                                # Install deps from lockfile into .venv
-uv run download_videos.py              # Download 3 quick-start videos (or --full for all 25)
+uv run download_videos.py              # Download 3 quick-start videos (or --full for all 25; add --r2 on cloud hosts)
 uv run setup_pixeltable.py             # Schema + ingest (3 quick-start; pass --full for all 25)
 ./run_setup_logged.sh --drop-dir       # pxt.drop_dir(substack_rec) + setup; logs to backend/logs/setup-*.log
 uv run main.py                         # Start FastAPI on :8000

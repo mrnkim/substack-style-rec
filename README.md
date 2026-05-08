@@ -115,9 +115,13 @@ TWELVELABS_INDEX_ID=69c37b6708cd679f8afbd748
 EOF
 
 uv sync                        # Install deps from lockfile
-uv run download_videos.py      # Download 3 quick-start videos (~2 min)
+uv run download_videos.py      # Download 3 quick-start videos from YouTube (~2 min)
 uv run setup_pixeltable.py     # Schema + scene detection + Marengo embeddings (~4 min)
 uv run main.py                 # FastAPI on localhost:8000
+
+# On cloud hosts (Render, AWS, etc.) where YouTube blocks yt-dlp, use the R2 mirror:
+#   uv run download_videos.py --r2
+#   uv run download_videos.py --r2 --full
 
 # Logged re-run (pxt.drop_dir on `substack_rec` only — not a full DB wipe; saves `backend/logs/setup-*.log`):
 #   ./run_setup_logged.sh --drop-dir
@@ -142,7 +146,7 @@ Without this, the browser talks to the Next.js `/api/*` routes instead of FastAP
 ### Run order (follow once per machine)
 
 1. **Backend env** — `backend/.env.local` with `TWELVELABS_API_KEY` and `TWELVELABS_INDEX_ID` (`backend/.env` also works; `config.py` reads both). Optional: `PIXELTABLE_HOME=./data` so Pixeltable data lives under `backend/data/`.
-2. **Install & load data** — From `backend/`: `uv sync`, then `uv run download_videos.py` (or `--full`), then `uv run setup_pixeltable.py` (matching `--full` if you used it). Skipping download/setup leaves empty tables or no `video_scenes` view.
+2. **Install & load data** — From `backend/`: `uv sync`, then `uv run download_videos.py` (or `--full`; add `--r2` on cloud hosts where YouTube blocks yt-dlp), then `uv run setup_pixeltable.py` (matching `--full` if you used it). Skipping download/setup leaves empty tables or no `video_scenes` view.
 3. **Root env** — Repo root `.env.local` with `NEXT_PUBLIC_API_BASE=http://localhost:8000/api` as above.
 4. **Run two processes** — Terminal A: `cd backend && uv run main.py` (port 8000). Terminal B: repo root `npm run dev` (port 3000).
 
@@ -160,8 +164,8 @@ Pixeltable is **stateful**. It runs an embedded Postgres (`pixeltable_pgserver`)
 
 **Files that ship with the repo:**
 
-- [`backend/Dockerfile`](./backend/Dockerfile) — Python 3.13 + ffmpeg + libgl + `uv`, production `uvicorn` launch, `PIXELTABLE_HOME=/var/pixeltable`.
-- [`backend/.dockerignore`](./backend/.dockerignore) — keeps `video_files/`, `data/`, `logs/`, `.venv/` out of the build context.
+- [`Dockerfile`](./Dockerfile) — Python 3.13 + ffmpeg + libgl + `uv`, production `uvicorn` launch, `PIXELTABLE_HOME=/var/pixeltable`.
+- [`.dockerignore`](./.dockerignore) — keeps frontend, `video_files/`, `data/`, `logs/`, `.venv/` out of the build context.
 - [`render.yaml`](./render.yaml) — web service + 20 GB persistent disk mounted at `/var/pixeltable`, Oregon region, `healthCheckPath: /health`.
 
 **Deploy:**
@@ -173,10 +177,10 @@ Pixeltable is **stateful**. It runs an embedded Postgres (`pixeltable_pgserver`)
 3. First deploy takes ~5 min (Docker build + boot). `GET /health` returns `{"status":"ok"}` as soon as the process is up, even before data is loaded.
 4. **One-time data load**: open the Render **Shell** tab on the service and run:
    ```bash
-   uv run download_videos.py --full
+   uv run download_videos.py --r2 --full
    uv run setup_pixeltable.py --full
    ```
-   This writes pgdata + video files to `/var/pixeltable`, which persists across redeploys. Drop `--full` for the 3-video quick-start (~4 min vs ~30 min).
+   `--r2` downloads from a Cloudflare R2 mirror instead of YouTube (yt-dlp is blocked on cloud IPs). This writes pgdata + video files to `/var/pixeltable`, which persists across redeploys. Drop `--full` for the 3-video quick-start (~4 min vs ~30 min).
 5. Subsequent deploys just reconnect (`lifespan` in `main.py` logs "Connected to Pixeltable schema") — setup does **not** re-run.
 
 Verify:
@@ -236,7 +240,7 @@ The disk-vs-no-disk decision is what you're choosing. Everything else is plumbin
 │   ├── config.py                 # Environment + TL credentials
 │   ├── models.py                 # Pydantic models (camelCase JSON)
 │   ├── functions.py              # analyze_video UDF + generate_reason
-│   ├── download_videos.py        # Download video files from YouTube via yt-dlp (3 default, --full for all)
+│   ├── download_videos.py        # Download video files: YouTube (default) or R2 mirror (--r2 for cloud hosts)
 │   ├── setup_pixeltable.py       # Schema + scene detection + Marengo embeddings + TL ingest
 │   └── routers/                  # videos, creators, recommendations, search
 │

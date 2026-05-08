@@ -157,11 +157,14 @@ def setup(full: bool = False):
             }
         )
 
+    has_video_files = len(missing_files) < len(video_rows)
     if missing_files:
         logger.warning(
-            "  %d videos missing local files — run 'uv run download_videos.py' first. "
+            "  %d/%d videos missing local files (yt-dlp blocked on cloud IPs is common). "
+            "Title embeddings will still work; scene detection requires video files. "
             "IDs: %s",
             len(missing_files),
+            len(video_rows),
             ", ".join(missing_files[:5]),
         )
 
