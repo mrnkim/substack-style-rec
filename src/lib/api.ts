@@ -11,6 +11,51 @@ import type { Video, Creator, Recommendation } from "./types";
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "/api";
 
 // ---------------------------------------------------------------------------
+// In-memory cache
+//
+// Keeps already-fetched videos and recommendations available with no network
+// round-trip on revisit. Lives for the lifetime of the SPA tab; cleared by a
+// hard refresh. TTL guards against truly stale data on long-lived sessions.
+// Coalesces concurrent requests for the same key (in-flight Promise reuse).
+// ---------------------------------------------------------------------------
+
+type CacheEntry<T> = { value: T; expires: number };
+const TTL_MS = 5 * 60 * 1000;
+
+const cache = new Map<string, CacheEntry<unknown>>();
+const inflight = new Map<string, Promise<unknown>>();
+
+function cached<T>(key: string, ttl: number, fetcher: () => Promise<T>): Promise<T> {
+  const now = Date.now();
+  const hit = cache.get(key) as CacheEntry<T> | undefined;
+  if (hit && hit.expires > now) return Promise.resolve(hit.value);
+
+  const pending = inflight.get(key) as Promise<T> | undefined;
+  if (pending) return pending;
+
+  const promise = fetcher()
+    .then((value) => {
+      cache.set(key, { value, expires: Date.now() + ttl });
+      return value;
+    })
+    .finally(() => {
+      inflight.delete(key);
+    });
+  inflight.set(key, promise);
+  return promise;
+}
+
+export function clearApiCache(prefix?: string) {
+  if (!prefix) {
+    cache.clear();
+    return;
+  }
+  for (const key of cache.keys()) {
+    if (key.startsWith(prefix)) cache.delete(key);
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Videos
 // ---------------------------------------------------------------------------
 
@@ -18,28 +63,33 @@ export async function getVideos(opts?: {
   category?: string;
   creatorId?: string;
 }): Promise<Video[]> {
-  try {
-    const params = new URLSearchParams();
-    if (opts?.category) params.set("category", opts.category);
-    if (opts?.creatorId) params.set("creator_id", opts.creatorId);
-    const qs = params.toString();
-    const res = await fetch(`${API_BASE}/videos${qs ? `?${qs}` : ""}`);
-    if (!res.ok) return [];
-    const data = await res.json();
-    return data.data ?? [];
-  } catch {
-    return [];
-  }
+  const key = `videos:${opts?.category ?? ""}:${opts?.creatorId ?? ""}`;
+  return cached(key, TTL_MS, async () => {
+    try {
+      const params = new URLSearchParams();
+      if (opts?.category) params.set("category", opts.category);
+      if (opts?.creatorId) params.set("creator_id", opts.creatorId);
+      const qs = params.toString();
+      const res = await fetch(`${API_BASE}/videos${qs ? `?${qs}` : ""}`);
+      if (!res.ok) return [];
+      const data = await res.json();
+      return data.data ?? [];
+    } catch {
+      return [];
+    }
+  });
 }
 
 export async function getVideo(id: string): Promise<Video | null> {
-  try {
-    const res = await fetch(`${API_BASE}/videos/${id}`);
-    if (!res.ok) return null;
-    return res.json();
-  } catch {
-    return null;
-  }
+  return cached(`video:${id}`, TTL_MS, async () => {
+    try {
+      const res = await fetch(`${API_BASE}/videos/${id}`);
+      if (!res.ok) return null;
+      return res.json();
+    } catch {
+      return null;
+    }
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -47,14 +97,16 @@ export async function getVideo(id: string): Promise<Video | null> {
 // ---------------------------------------------------------------------------
 
 export async function getCreators(): Promise<Creator[]> {
-  try {
-    const res = await fetch(`${API_BASE}/creators`);
-    if (!res.ok) return [];
-    const data = await res.json();
-    return data.data ?? [];
-  } catch {
-    return [];
-  }
+  return cached("creators:all", TTL_MS, async () => {
+    try {
+      const res = await fetch(`${API_BASE}/creators`);
+      if (!res.ok) return [];
+      const data = await res.json();
+      return data.data ?? [];
+    } catch {
+      return [];
+    }
+  });
 }
 
 export async function getCreator(
@@ -78,24 +130,29 @@ export async function getForYouRecommendations(
   watchHistory: string[],
   limit = 10,
 ): Promise<Recommendation[]> {
-  try {
-    const res = await fetch(`${API_BASE}/recommendations/for-you`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ subscriptions, watchHistory, limit }),
-    });
-    if (!res.ok) return [];
-    const data = await res.json();
-    const recs = (data.recommendations ?? []) as Recommendation[];
-    console.group("%c[For You] %d recommendations", "color:#00DC82;font-weight:bold", recs.length);
-    recs.forEach((r, i) =>
-      console.log(`#${i + 1} [${r.source}] score=${r.score?.toFixed(4) ?? "N/A"} | ${r.video.creator.name} — ${r.video.title}`)
-    );
-    console.groupEnd();
-    return recs;
-  } catch {
-    return [];
-  }
+  // Key on full inputs — for-you results genuinely change as the user
+  // subscribes/watches, so different states should not share a cache slot.
+  const key = `for-you:${[...subscriptions].sort().join(",")}|${[...watchHistory].sort().join(",")}|${limit}`;
+  return cached(key, TTL_MS, async () => {
+    try {
+      const res = await fetch(`${API_BASE}/recommendations/for-you`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ subscriptions, watchHistory, limit }),
+      });
+      if (!res.ok) return [];
+      const data = await res.json();
+      const recs = (data.recommendations ?? []) as Recommendation[];
+      console.group("%c[For You] %d recommendations", "color:#00DC82;font-weight:bold", recs.length);
+      recs.forEach((r, i) =>
+        console.log(`#${i + 1} [${r.source}] score=${r.score?.toFixed(4) ?? "N/A"} | ${r.video.creator.name} — ${r.video.title}`)
+      );
+      console.groupEnd();
+      return recs;
+    } catch {
+      return [];
+    }
+  });
 }
 
 export async function getSimilarVideos(
@@ -103,24 +160,30 @@ export async function getSimilarVideos(
   watchHistory: string[],
   limit = 6,
 ): Promise<Recommendation[]> {
-  try {
-    const res = await fetch(`${API_BASE}/recommendations/similar`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ videoId, watchHistory, limit }),
-    });
-    if (!res.ok) return [];
-    const data = await res.json();
-    const recs = (data.recommendations ?? []) as Recommendation[];
-    console.group("%c[Similar] %d recommendations", "color:#6CD5FD;font-weight:bold", recs.length);
-    recs.forEach((r, i) =>
-      console.log(`#${i + 1} [${r.source}] score=${r.score?.toFixed(4) ?? "N/A"} | ${r.video.creator.name} — ${r.video.title}`)
-    );
-    console.groupEnd();
-    return recs;
-  } catch {
-    return [];
-  }
+  // Key on videoId + limit only. watchHistory shifts as the user watches,
+  // but the similarity-based ranking for a given video is essentially stable
+  // across small history changes — caching by id keeps revisits instant.
+  const key = `similar:${videoId}|${limit}`;
+  return cached(key, TTL_MS, async () => {
+    try {
+      const res = await fetch(`${API_BASE}/recommendations/similar`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ videoId, watchHistory, limit }),
+      });
+      if (!res.ok) return [];
+      const data = await res.json();
+      const recs = (data.recommendations ?? []) as Recommendation[];
+      console.group("%c[Similar] %d recommendations", "color:#6CD5FD;font-weight:bold", recs.length);
+      recs.forEach((r, i) =>
+        console.log(`#${i + 1} [${r.source}] score=${r.score?.toFixed(4) ?? "N/A"} | ${r.video.creator.name} — ${r.video.title}`)
+      );
+      console.groupEnd();
+      return recs;
+    } catch {
+      return [];
+    }
+  });
 }
 
 export async function getCreatorCatalog(
