@@ -59,6 +59,23 @@ export function clearApiCache(prefix?: string) {
 // Videos
 // ---------------------------------------------------------------------------
 
+// Dedupe a list keeping the first occurrence of each `id`.
+// Pixeltable's `videos.insert(..., on_error="ignore")` does not actually
+// drop primary-key collisions the way we expected, so the deployed table
+// can carry stale duplicate rows from earlier setup runs. Until the
+// production DB is freshly repopulated, dedupe at the API boundary so the
+// UI never shows the same video twice.
+function dedupeById<T extends { id: string }>(items: T[]): T[] {
+  const seen = new Set<string>();
+  const out: T[] = [];
+  for (const it of items) {
+    if (!it?.id || seen.has(it.id)) continue;
+    seen.add(it.id);
+    out.push(it);
+  }
+  return out;
+}
+
 export async function getVideos(opts?: {
   category?: string;
   creatorId?: string;
@@ -73,7 +90,7 @@ export async function getVideos(opts?: {
       const res = await fetch(`${API_BASE}/videos${qs ? `?${qs}` : ""}`);
       if (!res.ok) return [];
       const data = await res.json();
-      return data.data ?? [];
+      return dedupeById((data.data ?? []) as Video[]);
     } catch {
       return [];
     }
@@ -102,7 +119,7 @@ export async function getCreators(): Promise<Creator[]> {
       const res = await fetch(`${API_BASE}/creators`);
       if (!res.ok) return [];
       const data = await res.json();
-      return data.data ?? [];
+      return dedupeById((data.data ?? []) as Creator[]);
     } catch {
       return [];
     }
@@ -115,7 +132,9 @@ export async function getCreator(
   try {
     const res = await fetch(`${API_BASE}/creators/${id}`);
     if (!res.ok) return null;
-    return res.json();
+    const data = await res.json();
+    if (data?.videos) data.videos = dedupeById(data.videos as Video[]);
+    return data;
   } catch {
     return null;
   }
