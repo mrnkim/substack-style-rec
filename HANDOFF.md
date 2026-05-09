@@ -175,3 +175,76 @@ See [`README.md`](./README.md#quick-start) for the full run order.
 - **Render deployment**: Dockerfile moved to repo root, entrypoint fixes pgdata permissions. Blueprint-based deploy with persistent disk.
 - **Console logging**: Browser DevTools shows recommendation scores for For You and Similar endpoints.
 - **VideoPlayer startTime**: Supports `?t=` query param for scene-level deep linking from search results.
+
+## Session 2026-05-08 → Open Issue: Render Initial-Populate OOM
+
+### What landed (all in `main`)
+
+Six PRs merged in this session, all summarized in their commit messages:
+
+- **PR #6** Cache client-side API responses (5-min in-memory Map + inflight de-dup).
+- **PR #7** Empty default subscriptions; bumped `localStorage` key to `curatorai-user-state-v2` so existing browsers reset.
+- **PR #8** Live subscription badges in Up Next (client-side recompute of `source` / `contextTag` from `useUserState().isSubscribed`).
+- **PR #9** Polish For You: recency-weighted scoring (max → weighted sum, weights `[0.5, 0.25, 0.125, 0.0625, 0.0625]`), cold-start clean cards (empty `reason`/`matchedAttributes`), hero loading spinner (drop `videos[0]` fallback), ref-scene sampling for `for-you` (`MAX_REF_SCENES_FOR_YOU = 6`).
+- **PR #10** Summary + Chapters on watch page. New UDFs `summarize_video` / `chapters_for_video`, `Chapter` type, `forwardRef` + `useImperativeHandle` on `<VideoPlayer>` exposing `seekTo(t)`, click-to-seek chapter list under "About this video".
+- **PR #11** Drop OpenCV scene-detect path; pull precomputed Marengo segment embeddings via `GET /indexes/{id}/indexed-assets/{vid}?embedding_option=visual` (`fetch_tl_segments` UDF). Flat `scenes` table with `Required[Array[(512,), Float]]` `visual_embedding` indexed via `add_embedding_index(string_embed=marengo)`.
+- **PR #12** Pre-compute `summary` / `chapters` to `backend/summaries.json` (76 KB → 86 KB), UDFs prefer cache before falling back to `/analyze`.
+- **PR #13** Cache `analyze_video` (topic/style/tone) in the same JSON. After this, `/analyze` is **never** called during a normal Render setup.
+- Hotfixes on `main`: dedupe Up Next sidebar by `video.id` (mirrors VideoRow dedupe); remove "More Info" button from hero; wrap `.attr-pill` in `@layer components` so Tailwind v4 doesn't drop the rule; switch summary/chapters from deprecated `/summarize` (HTTP 410 since 2026-01-07) to `/analyze`.
+
+### Open issue: Render initial populate keeps dying
+
+Render auto-deployed everything from `main`. The deployed code is correct (`/api/videos` returns the new `summary` / `chapters` fields, recommendations work). The remaining problem is repopulating Pixeltable on Render's persistent disk so the columns aren't `null`:
+
+- We expect `setup_pixeltable.py --full` to make zero `/analyze` calls thanks to the JSON cache.
+- It does — only `/indexed-assets/...?embedding_option=visual` GETs (cheap) and `/embed-v2` POSTs for the title text embedding.
+- Despite that, `setup_pixeltable.py` keeps dying mid-run on Render Starter (512 MB). Each restart progresses ~3–9 videos and then the Python process is gone (no traceback in the log → SIGKILL pattern, almost certainly the OOM-killer).
+- Olivia Dean's video (`69c381d3fb98262c9024310c`) returns HTTP 400 from every TL endpoint (`/analyze`, `/indexed-assets`). Handled gracefully via try/except; that single video's row ends up with empty derived fields. Not the OOM cause.
+- The deployed FastAPI process (`PID 44` in the previous container) is also using the same Pixeltable embedded Postgres on `/var/pixeltable/pgdata`. When setup runs as a separate process it tries to **start** another postmaster on the same socket → `FATAL: lock file already exists`. `kill 44` from inside the container returns `Operation not permitted` (capability drop).
+- Workaround that works: trigger Render `Manual Deploy` or wait for a container swap. SSH into the **fresh** container and run setup before FastAPI's Pixeltable init grabs the lock. With `nohup` + `disown`, setup survives SSH disconnects but **not** container restarts.
+- Best progress so far this session was 18/25 unique rows in the videos table; another restart is needed.
+
+### How to resume next session
+
+Render currently has a partially-populated Pixeltable. The simplest finish path:
+
+1. SSH in (use SSH, not Web Shell — Web Shell drops constantly):
+   ```sh
+   ssh srv-d7o1sj77f7vs7384ad70@ssh.oregon.render.com
+   ```
+2. If the previous setup process is gone:
+   ```sh
+   cd /app
+   ls /proc/*/cmdline 2>/dev/null | xargs -0 -I{} grep -l setup_pixeltable {} 2>/dev/null
+   ```
+   No output → safe to relaunch.
+3. Restart setup (idempotent — skips already-inserted IDs by primary key):
+   ```sh
+   rm -f /var/pixeltable/pgdata/.s.PGSQL.5432.lock /var/pixeltable/pgdata/postmaster.pid
+   nohup uv run setup_pixeltable.py --full > /var/pixeltable/setup.log 2>&1 &
+   disown
+   ```
+4. Watch progress (does not need to stay attached):
+   ```sh
+   grep "Inserting videos" /var/pixeltable/setup.log | tail -3
+   tail -10 /var/pixeltable/setup.log
+   ```
+5. After each death (logs stop advancing for >2 min, `kill -0 <pid>` says dead), repeat step 3. Each cycle adds another batch.
+6. Final check (paste-safe one-liner):
+   ```sh
+   uv run python3 -c "import pixeltable as pxt, config; v = pxt.get_table(f'{config.APP_NAMESPACE}.videos'); rows = list(v.select(v.id).collect()); print('total:', len(rows), 'unique:', len(set(r['id'] for r in rows)))"
+   ```
+   Target: `total: 25 unique: 25`. Olivia Dean's row will be present but with empty `summary` / `chapters` / `tl_segments`.
+7. Live verification from local:
+   ```sh
+   curl -s "https://substack-rec-api-g2ui.onrender.com/api/videos?limit=1" | python3 -m json.tool
+   ```
+   Look for non-null `summary` and a non-empty `chapters` array.
+
+### Known landmines for next time
+
+- Render Web Shell **disconnects too easily**. Use SSH (already configured with the user's `~/.ssh/id_rsa.pub`).
+- Terminal-paste autoindent in this Render shell mangles multi-line commands and heredocs (`  EOF` is treated as content, not terminator). Use single-line commands or `base64 -d` round-trips for scripts.
+- `videos.insert(batch, on_error="ignore")` does **not** dedupe by primary key the way we expected — re-running setup without `drop_dir` accumulates duplicate rows. Always `drop_dir` before a fresh population, never re-run setup mid-flight without it.
+- Container restarts kill `nohup` processes too. Only SSH disconnects are survived.
+- If the OOM keeps biting at the same batch, the long-term fix is either a bigger Render plan (Standard, 2 GB, ~$25/mo) or moving setup out of the request path (entrypoint script that runs before uvicorn — drafted but not yet shipped).
