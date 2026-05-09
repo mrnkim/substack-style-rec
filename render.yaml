@@ -15,7 +15,7 @@ services:
     name: substack-rec-api
     runtime: docker
     dockerfilePath: ./Dockerfile
-    plan: starter                # Disks require Starter or higher.
+    plan: standard               # Standard avoids OOM during initial setup_pixeltable on this snapshot (d1dc55b lacks the cache PRs from main).
     region: oregon               # Match your Vercel region if latency matters.
     healthCheckPath: /health
     autoDeploy: true
