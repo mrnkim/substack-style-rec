@@ -38,7 +38,7 @@ from functions import generate_reason
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/recommendations", tags=["recommendations"])
 
-MAX_SCENE_QUERIES = 6
+MAX_SCENE_QUERIES = 2
 
 
 def _apply_diversity(candidates: list[dict], max_per_creator: int = 2) -> list[dict]:
