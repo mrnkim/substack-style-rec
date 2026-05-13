@@ -191,9 +191,12 @@ def setup(full: bool = False):
     # boundaries, then video_splitter with mode='fast' (stream copy, no
     # re-encoding) to split at those points. ~10 scenes per video in seconds.
 
+    # Lower fps (1 vs 2) halves frame processing; higher min_scene_len (240 vs 120)
+    # ensures at least 4 minutes between cuts → ~5–8 scenes for a 30-min video.
+    # Reduces compute/memory for Render deploys while keeping enough scene diversity.
     videos.add_computed_column(
         scenes=videos.video.scene_detect_histogram(
-            fps=2, threshold=0.8, min_scene_len=120,
+            fps=1, threshold=0.8, min_scene_len=240,
         ),
         if_exists="ignore",
     )

@@ -1,4 +1,11 @@
-"""Recommendation endpoints: for-you, similar, creator-catalog."""
+"""Recommendation endpoints: for-you, similar, creator-catalog.
+
+Query strategy for scene-based recommendations:
+1. Best: grab representative scene segments from the watched video and query
+   with those clips (video-to-video via Marengo, always under the 36MB embed cap).
+2. Fallback: use a rich text query (title + topics) against scene embeddings.
+3. Last resort: title-only embedding index on the videos table.
+"""
 
 import logging
 from collections import defaultdict
@@ -31,6 +38,8 @@ from functions import generate_reason
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/recommendations", tags=["recommendations"])
 
+MAX_SCENE_QUERIES = 6
+
 
 def _apply_diversity(candidates: list[dict], max_per_creator: int = 2) -> list[dict]:
     counts: dict[str, int] = defaultdict(int)
@@ -43,44 +52,55 @@ def _apply_diversity(candidates: list[dict], max_per_creator: int = 2) -> list[d
     return result
 
 
-def _sim_kwargs_from_ref(ref: dict) -> dict:
-    """Prefer full-file video query when local file exists and is under TL embed size cap; else title."""
-    path = ref.get("_video_path") or ref.get("video")
-    if path and str(path).strip():
-        p = Path(str(path))
-        try:
-            if p.is_file():
-                size = p.stat().st_size
-                if size <= config.TWELVELABS_EMBED_VIDEO_MAX_BYTES:
-                    return {"video": str(p)}
-                logger.info(
-                    "  skip video= query (%.1f MB > embed cap); using title",
-                    size / (1024 * 1024),
-                )
-        except OSError:
-            pass
-    title = (ref.get("title") or "").strip()
-    return {"string": title if title else "untitled"}
+def _get_ref_scene_segments(scenes_t, video_id: str, max_segments: int = MAX_SCENE_QUERIES) -> list[str]:
+    """Get representative scene segment file paths for a video.
 
-
-def _enrich_video_paths(rows: list[dict], videos_t) -> None:
-    """Attach _video_path from the videos table for scene similarity(video=...)."""
-    if not rows:
-        return
-    ids = [r["id"] for r in rows if r.get("id")]
-    if not ids:
-        return
+    Samples evenly-spaced scenes from the video to use as query inputs.
+    Each scene clip is typically a few seconds — well under the 36MB embed cap.
+    """
     try:
-        pmap = {
-            r["id"]: r.get("video")
-            for r in videos_t.where(videos_t.id.isin(ids))
-            .select(videos_t.id, videos_t.video)
+        all_segments = list(
+            scenes_t.where(scenes_t.id == video_id)
+            .select(scenes_t.video_segment)
             .collect()
-        }
+        )
     except Exception:
-        return
-    for r in rows:
-        r["_video_path"] = pmap.get(r["id"])
+        return []
+
+    if not all_segments:
+        return []
+
+    valid = []
+    for row in all_segments:
+        seg = row.get("video_segment")
+        if seg:
+            p = Path(str(seg))
+            try:
+                if p.is_file() and p.stat().st_size <= config.TWELVELABS_EMBED_VIDEO_MAX_BYTES:
+                    valid.append(str(p))
+            except OSError:
+                continue
+
+    if not valid:
+        return []
+
+    if len(valid) <= max_segments:
+        return valid
+
+    step = len(valid) / max_segments
+    return [valid[int(i * step)] for i in range(max_segments)]
+
+
+def _build_text_query(ref: dict) -> str:
+    """Build a rich text query from title + topics for cross-modal scene search."""
+    parts = []
+    title = (ref.get("title") or "").strip()
+    if title:
+        parts.append(title)
+    topics = ref.get("topic") or []
+    if isinstance(topics, list) and topics:
+        parts.append(", ".join(topics[:3]))
+    return " — ".join(parts) if parts else "untitled"
 
 
 def _similarity_candidates(
@@ -90,23 +110,59 @@ def _similarity_candidates(
     limit: int,
     creator_id: str | None = None,
 ) -> list[dict]:
-    """Query Marengo on video_scenes; use similarity(video=path) when available, else string=title."""
+    """Query Marengo on video_scenes using scene segments from the reference video.
+
+    Priority:
+    1. Scene segment clips from the watched video → video-to-video (best quality)
+    2. Rich text query (title + topics) → text-to-video cross-modal
+    3. Title-only embedding index fallback
+    """
     scenes_t = _get_scenes_table()
-    sim_kw = _sim_kwargs_from_ref(ref)
-    title_fallback = (ref.get("title") or "untitled").strip()
+    ref_id = ref.get("id", "")
 
     if scenes_t is not None:
+        # Strategy 1: Query with actual scene segments from the reference video
+        segments = _get_ref_scene_segments(scenes_t, ref_id)
+        if segments:
+            try:
+                all_candidates: dict[str, dict] = {}
+                per_segment_limit = max(limit // len(segments), 5)
+                for seg_path in segments:
+                    rows = _scene_similarity(
+                        scenes_t, exclude_ids | {ref_id}, per_segment_limit, creator_id,
+                        video=seg_path,
+                    )
+                    for r in rows:
+                        vid = r["id"]
+                        if vid not in all_candidates or (r.get("score", 0) > all_candidates[vid].get("score", 0)):
+                            all_candidates[vid] = r
+
+                if all_candidates:
+                    ranked = sorted(
+                        all_candidates.values(),
+                        key=lambda x: x.get("score", 0),
+                        reverse=True,
+                    )[:limit]
+                    logger.info(
+                        "  [scene index] query=%d scene segments (video-to-video)",
+                        len(segments),
+                    )
+                    return ranked
+            except Exception as exc:
+                logger.warning("scene-segment similarity failed (%s), trying text", exc)
+
+        # Strategy 2: Rich text query (title + topics) against scene embeddings
+        text_query = _build_text_query(ref)
         try:
-            rows = _scene_similarity(scenes_t, exclude_ids, limit, creator_id, **sim_kw)
+            rows = _scene_similarity(scenes_t, exclude_ids | {ref_id}, limit, creator_id, string=text_query)
             if rows:
-                if "video" in sim_kw:
-                    logger.info("  [scene index] query=video file (content-to-content)")
-                else:
-                    logger.info("  [scene index] query=title text")
+                logger.info("  [scene index] query=text '%s'", text_query[:60])
                 return rows
         except Exception as exc:
-            logger.warning("scene similarity failed (%s), falling back to title", exc)
+            logger.warning("scene text-similarity failed (%s), falling back to title index", exc)
 
+    # Strategy 3: Title-only embedding index
+    title_fallback = (ref.get("title") or "untitled").strip()
     logger.info("  [title fallback] using title similarity")
     try:
         return _title_similarity(
@@ -205,7 +261,6 @@ def for_you(body: ForYouRequest):
     # Standard flow: Marengo similarity from watch history
     all_rows = list(_select_videos(videos_t).collect())
     _attach_attrs(all_rows, videos_t)
-    _enrich_video_paths(all_rows, videos_t)
     by_id = {v["id"]: v for v in all_rows}
 
     # If user has watched (almost) everything, don't exclude — just deprioritize
@@ -290,7 +345,6 @@ def similar(body: SimilarRequest):
         raise HTTPException(status_code=404, detail="Video not found")
 
     _attach_attrs(ref_rows, videos_t)
-    _enrich_video_paths(ref_rows, videos_t)
     ref = ref_rows[0]
     total_videos = videos_t.count()
     watched_plus_current = set(body.watch_history) | {body.video_id}
@@ -378,7 +432,6 @@ def creator_catalog(body: CreatorCatalogRequest):
     if body.watch_history:
         all_rows = list(_select_videos(videos_t).collect())
         _attach_attrs(all_rows, videos_t)
-        _enrich_video_paths(all_rows, videos_t)
         watched_by_id = {
             v["id"]: v for v in all_rows if v["id"] in set(body.watch_history)
         }
