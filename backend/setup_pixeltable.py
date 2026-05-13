@@ -191,9 +191,13 @@ def setup(full: bool = False):
     # boundaries, then video_splitter with mode='fast' (stream copy, no
     # re-encoding) to split at those points. ~10 scenes per video in seconds.
 
+    # min_scene_len is in original video frames (e.g. 30fps video: 900 frames = 30s).
+    # fps=1 halves analysis cost vs fps=2. threshold=0.9 (up from 0.8) requires
+    # stronger scene breaks. Together: ~3-5 scenes per 10-min video, ~8-12 per 30-min.
+    # Fewer scenes = less memory during embed + faster setup on Render.
     videos.add_computed_column(
         scenes=videos.video.scene_detect_histogram(
-            fps=2, threshold=0.8, min_scene_len=120,
+            fps=1, threshold=0.9, min_scene_len=900,
         ),
         if_exists="ignore",
     )
