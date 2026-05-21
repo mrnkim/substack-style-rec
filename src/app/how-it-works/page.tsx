@@ -136,14 +136,9 @@ export default function HowItWorksPage() {
     <div className="pb-20 animate-fade-up">
       {/* Hero */}
       <section className="px-8 pt-10 pb-8 max-w-4xl">
-        <h1 className="text-4xl font-bold text-[var(--text-primary)] font-[family-name:var(--font-brand)] mb-3">
+        <h1 className="text-4xl font-bold text-[var(--text-primary)] font-[family-name:var(--font-brand)] mb-6">
           How it works
         </h1>
-        <p className="text-base text-[var(--text-secondary)] leading-relaxed max-w-2xl mb-6">
-          This demo recommends videos using{" "}
-          <span className="text-[var(--text-primary)]">TwelveLabs Marengo</span> embeddings,
-          with <span className="text-[var(--text-primary)]">Pixeltable</span> as the data layer.
-        </p>
 
         <div className="flex flex-wrap gap-2 mb-6">
           <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[var(--accent-muted)] border border-[var(--border-accent)] text-xs font-medium text-[var(--accent)]">
@@ -181,9 +176,14 @@ export default function HowItWorksPage() {
                   TwelveLabs
                 </h3>
               </div>
+              <p className="text-sm text-[var(--text-secondary)] leading-relaxed mb-3">
+                Video understanding models. Marengo embeds video, audio, speech, and on-screen
+                text into a unified vector space. Analyze extracts structured attributes from a
+                video.
+              </p>
               <p className="text-sm text-[var(--text-secondary)] leading-relaxed">
-                Marengo 3.0 for multimodal video embeddings, and Analyze for structured
-                per-video attributes ({" "}
+                In this app, Marengo 3.0 produces a 512-dim embedding per video scene. Analyze
+                runs once per video to extract{" "}
                 <code className="text-[11px] font-[family-name:var(--font-mono)] text-[var(--text-primary)]">
                   topic
                 </code>
@@ -191,12 +191,30 @@ export default function HowItWorksPage() {
                 <code className="text-[11px] font-[family-name:var(--font-mono)] text-[var(--text-primary)]">
                   style
                 </code>
-                ,{" "}
+                , and{" "}
                 <code className="text-[11px] font-[family-name:var(--font-mono)] text-[var(--text-primary)]">
                   tone
                 </code>
-                ).
+                .
               </p>
+              <div className="mt-4 flex gap-4 text-xs font-medium">
+                <a
+                  href="https://docs.twelvelabs.io"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-[var(--accent)] hover:text-[var(--accent-hover)] transition-colors"
+                >
+                  Docs →
+                </a>
+                <a
+                  href="https://github.com/twelvelabs-io/twelvelabs-python"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-[var(--accent)] hover:text-[var(--accent-hover)] transition-colors"
+                >
+                  GitHub →
+                </a>
+              </div>
             </div>
 
             <div className="p-6 rounded-[var(--radius-lg)] border border-[var(--border-default)] bg-[var(--bg-card)]">
@@ -207,9 +225,10 @@ export default function HowItWorksPage() {
                 </h3>
               </div>
               <p className="text-sm text-[var(--text-secondary)] leading-relaxed mb-3">
-                Pixeltable is a Python data layer for AI applications. You define tables with
-                computed columns, including embedding indexes, and Pixeltable runs the model
-                and keeps the index up to date as new data arrives.
+                Pixeltable is an open-source backend for building multimodal AI applications in
+                Python. You define tables with computed columns, including embedding indexes,
+                and Pixeltable runs the model and keeps the index up to date as new data
+                arrives.
               </p>
               <p className="text-sm text-[var(--text-secondary)] leading-relaxed">
                 In this app, every TwelveLabs call (embeddings, Analyze) is a Pixeltable
@@ -219,7 +238,7 @@ export default function HowItWorksPage() {
                 </code>{" "}
                 calls against the local pgvector index.
               </p>
-              <div className="mt-4 flex gap-4 text-xs font-medium">
+              <div className="mt-4 flex flex-wrap gap-x-4 gap-y-2 text-xs font-medium">
                 <a
                   href="https://docs.pixeltable.com"
                   target="_blank"
@@ -235,6 +254,14 @@ export default function HowItWorksPage() {
                   className="text-[var(--accent)] hover:text-[var(--accent-hover)] transition-colors"
                 >
                   GitHub →
+                </a>
+                <a
+                  href="https://github.com/pixeltable/pixeltable-starter-kit"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-[var(--accent)] hover:text-[var(--accent-hover)] transition-colors"
+                >
+                  Starter kit →
                 </a>
               </div>
             </div>
@@ -497,6 +524,12 @@ export default function HowItWorksPage() {
           </h2>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
             <ResourceTile
+              href="https://github.com/pixeltable/pixeltable-starter-kit"
+              emoji="◆"
+              title="Pixeltable starter kit"
+              description="A working starter app to clone and adapt."
+            />
+            <ResourceTile
               href="https://docs.pixeltable.com/howto/providers/working-with-twelvelabs.md"
               emoji="📗"
               title="Pixeltable + TwelveLabs guide"
@@ -507,12 +540,6 @@ export default function HowItWorksPage() {
               emoji="📘"
               title="Pixeltable docs"
               description="Tables, computed columns, embedding indexes, UDFs."
-            />
-            <ResourceTile
-              href="https://github.com/pixeltable/pixeltable"
-              emoji="◆"
-              title="Pixeltable on GitHub"
-              description="Source, examples, issue tracker."
             />
             <ResourceTile
               href={REPO_URL}
