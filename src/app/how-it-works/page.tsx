@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 
-const REPO_URL = "https://github.com/apreshill/substack-style-rec";
+const REPO_URL = "https://github.com/mrnkim/substack-style-rec";
 
 const sceneIndexSnippet = `video_scenes.add_embedding_index(
     "video_segment",
@@ -177,13 +177,16 @@ export default function HowItWorksPage() {
                 </h3>
               </div>
               <p className="text-sm text-[var(--text-secondary)] leading-relaxed mb-3">
-                Video understanding models. Marengo embeds video, audio, speech, and on-screen
-                text into a unified vector space. Analyze extracts structured attributes from a
-                video.
+                TwelveLabs builds models that watch and understand video the way you would —
+                they pick up on what&apos;s being said, what&apos;s on screen, and how it all fits
+                together. Two of their APIs matter here: Marengo (which turns a video clip into
+                a numeric fingerprint you can search against) and Analyze (which watches a video
+                and pulls out structured details like topic and tone).
               </p>
               <p className="text-sm text-[var(--text-secondary)] leading-relaxed">
-                In this app, Marengo 3.0 produces a 512-dim embedding per video scene. Analyze
-                runs once per video to extract{" "}
+                In this app, Marengo runs on every scene to produce a searchable embedding.
+                Analyze runs once per video to tag it
+                with{" "}
                 <code className="text-[11px] font-[family-name:var(--font-mono)] text-[var(--text-primary)]">
                   topic
                 </code>
@@ -225,18 +228,16 @@ export default function HowItWorksPage() {
                 </h3>
               </div>
               <p className="text-sm text-[var(--text-secondary)] leading-relaxed mb-3">
-                Pixeltable is an open-source backend for building multimodal AI applications in
-                Python. You define tables with computed columns, including embedding indexes,
-                and Pixeltable runs the model and keeps the index up to date as new data
-                arrives.
+                Pixeltable is an open-source Python library that acts as the data layer between
+                your app and your AI models. You describe what you want computed (embeddings,
+                API calls, transforms) as columns in a table, and Pixeltable handles running
+                those computations whenever new data shows up.
               </p>
               <p className="text-sm text-[var(--text-secondary)] leading-relaxed">
-                In this app, every TwelveLabs call (embeddings, Analyze) is a Pixeltable
-                computed column. Recommendation queries are{" "}
-                <code className="text-[11px] font-[family-name:var(--font-mono)] text-[var(--text-primary)]">
-                  .similarity()
-                </code>{" "}
-                calls against the local pgvector index.
+                In this app, every TwelveLabs call is wired up as a Pixeltable computed column.
+                When a new video is inserted, the embeddings and Analyze results get computed
+                automatically. Recommendations are just similarity queries against the local
+                index — no extra infrastructure needed.
               </p>
               <div className="mt-4 flex flex-wrap gap-x-4 gap-y-2 text-xs font-medium">
                 <a
@@ -284,9 +285,9 @@ export default function HowItWorksPage() {
                 </h3>
               </div>
               <ul className="text-xs text-[var(--text-secondary)] leading-relaxed space-y-1.5">
-                <li>Subscription state, watch history</li>
-                <li>UI, navigation, animations</li>
-                <li>localStorage persistence</li>
+                <li>Tracks which creators you subscribe to and what you&apos;ve watched</li>
+                <li>Renders all the pages, handles navigation</li>
+                <li>Saves your state in the browser so it survives a refresh</li>
               </ul>
             </div>
 
@@ -298,10 +299,10 @@ export default function HowItWorksPage() {
                 </h3>
               </div>
               <ul className="text-xs text-[var(--text-secondary)] leading-relaxed space-y-1.5">
-                <li>Video storage, computed columns</li>
-                <li>Embedding indexes, .similarity()</li>
-                <li>70/30 split, creator diversity</li>
-                <li>Reason generation</li>
+                <li>Stores videos and automatically computes new columns when data arrives</li>
+                <li>Runs similarity queries against the embedding index</li>
+                <li>Mixes subscribed and new creators (70/30) so recommendations stay diverse</li>
+                <li>Generates the &ldquo;Because you watched&hellip;&rdquo; explanation text</li>
               </ul>
             </div>
 
@@ -313,9 +314,9 @@ export default function HowItWorksPage() {
                 </h3>
               </div>
               <ul className="text-xs text-[var(--text-secondary)] leading-relaxed space-y-1.5">
-                <li>Marengo 3.0 embeddings</li>
-                <li>Analyze API attribute extraction</li>
-                <li>Upload + indexing</li>
+                <li>Turns each video scene into a 512-dim vector (Marengo 3.0)</li>
+                <li>Extracts topic, style, and tone from each video (Analyze API)</li>
+                <li>Hosts the uploaded videos and serves HLS streams</li>
               </ul>
             </div>
           </div>
@@ -327,68 +328,26 @@ export default function HowItWorksPage() {
             </h3>
             <div className="border-l-0">
               <StepCard number={1} title="Ingest">
-                <code className="text-[11px] font-[family-name:var(--font-mono)] text-[var(--text-primary)]">
-                  yt-dlp
-                </code>{" "}
-                downloads 25 curated videos and{" "}
-                <code className="text-[11px] font-[family-name:var(--font-mono)] text-[var(--text-primary)]">
-                  setup_pixeltable.py
-                </code>{" "}
-                inserts them into a Pixeltable{" "}
-                <code className="text-[11px] font-[family-name:var(--font-mono)] text-[var(--text-primary)]">
-                  videos
-                </code>{" "}
-                table alongside a{" "}
-                <code className="text-[11px] font-[family-name:var(--font-mono)] text-[var(--text-primary)]">
-                  creators
-                </code>{" "}
-                table.
+                25 curated videos sourced from YouTube get loaded into Pixeltable
+                along with metadata about each creator.
               </StepCard>
               <StepCard number={2} title="Scene-split">
-                <code className="text-[11px] font-[family-name:var(--font-mono)] text-[var(--text-primary)]">
-                  scene_detect_histogram
-                </code>{" "}
-                finds natural scene boundaries.{" "}
-                <code className="text-[11px] font-[family-name:var(--font-mono)] text-[var(--text-primary)]">
-                  video_splitter(mode=&quot;fast&quot;)
-                </code>{" "}
-                cuts at those points using stream copy (no re-encoding). The result is a{" "}
-                <code className="text-[11px] font-[family-name:var(--font-mono)] text-[var(--text-primary)]">
-                  video_scenes
-                </code>{" "}
-                view with about 10 scenes per video.
+                Pixeltable detects natural scene boundaries in each video and splits
+                it into roughly 10 shorter clips. This means search and recommendations
+                can match on specific moments, not just whole videos.
               </StepCard>
               <StepCard number={3} title="Embed + analyze">
-                Pixeltable computes Marengo 3.0 embeddings on every scene segment and runs the
-                TwelveLabs Analyze API on every video. Both are{" "}
-                <span className="text-[var(--text-primary)]">computed columns</span>, so they
-                populate automatically on{" "}
-                <code className="text-[11px] font-[family-name:var(--font-mono)] text-[var(--text-primary)]">
-                  INSERT
-                </code>
-                . Scene embeddings land in the{" "}
-                <code className="text-[11px] font-[family-name:var(--font-mono)] text-[var(--text-primary)]">
-                  scene_marengo
-                </code>{" "}
-                index. A{" "}
-                <code className="text-[11px] font-[family-name:var(--font-mono)] text-[var(--text-primary)]">
-                  title_marengo
-                </code>{" "}
-                text index sits alongside as a fallback.
+                Marengo 3.0 turns each scene clip into a searchable embedding. The
+                Analyze API watches each full video and tags it with a topic, style,
+                and tone. Both happen automatically when a video is added.
               </StepCard>
               <StepCard number={4} title="Serve">
-                FastAPI routes run{" "}
-                <code className="text-[11px] font-[family-name:var(--font-mono)] text-[var(--text-primary)]">
-                  .similarity()
-                </code>{" "}
-                against the pre-computed{" "}
-                <code className="text-[11px] font-[family-name:var(--font-mono)] text-[var(--text-primary)]">
-                  scene_marengo
-                </code>{" "}
-                index, apply creator diversity (max 2 per creator) and a 70/30
-                subscription/discovery split, and use the Analyze attributes to build the{" "}
-                <em className="text-[var(--text-primary)]">&ldquo;Because you watched…&rdquo;</em>{" "}
-                reason text.
+                When you open the app, recommendations come from similarity queries
+                against those pre-computed embeddings. The backend caps each creator
+                at 2 results and mixes in new creators you haven&apos;t subscribed to,
+                then writes a short{" "}
+                <em className="text-[var(--text-primary)]">&ldquo;Because you watched&hellip;&rdquo;</em>{" "}
+                explanation for each pick.
               </StepCard>
             </div>
           </div>
@@ -413,11 +372,11 @@ export default function HowItWorksPage() {
                 At ingest · once
               </div>
               <div className="text-sm text-[var(--text-primary)] font-semibold mb-2">
-                Upload, Embed, Analyze
+                Upload, embed, and analyze
               </div>
               <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
-                Every video runs through TwelveLabs once when it&apos;s added, via Pixeltable
-                computed columns. The results stay in the index.
+                Every video goes through TwelveLabs once when it&apos;s first added.
+                The embeddings and attributes are stored locally after that.
               </p>
             </div>
             <div className="p-5 rounded-[var(--radius-lg)] border border-[var(--border-default)] bg-[var(--bg-card)]">
@@ -425,11 +384,11 @@ export default function HowItWorksPage() {
                 At search · live
               </div>
               <div className="text-sm text-[var(--text-primary)] font-semibold mb-2">
-                One Embed call per query
+                One API call per search
               </div>
               <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
-                Pixeltable embeds the search query into a 512-dim vector via Marengo. The local
-                pgvector index does the rest.
+                Your search text gets turned into an embedding via Marengo so it can be
+                compared against the video scenes. Matching happens locally.
               </p>
             </div>
             <div className="p-5 rounded-[var(--radius-lg)] border border-[var(--border-default)] bg-[var(--bg-card)]">
@@ -454,19 +413,19 @@ export default function HowItWorksPage() {
           </h2>
           <div className="space-y-4">
             <CodeBlock
-              label="Per-scene Marengo embedding index"
+              label="Embedding each scene"
               code={sceneIndexSnippet}
-              caption="Pixeltable computes the embedding for every existing row and every future insert, and keeps the index up to date."
+              caption="Pixeltable computes the Marengo embedding for every scene, including any added later, and keeps the index current."
             />
             <CodeBlock
-              label="TwelveLabs Analyze as a Pixeltable UDF"
+              label="Analyze API as a computed column"
               code={analyzeSnippet}
-              caption="Wrap an external API as a UDF, then expose it as a computed column. Pixeltable handles the calls as new rows arrive."
+              caption="The Analyze API call is wrapped as a Python function and attached as a computed column. Pixeltable calls it automatically whenever a new video is inserted."
             />
             <CodeBlock
-              label="Cross-modal scene similarity"
+              label="Searching scenes by text"
               code={similaritySnippet}
-              caption="Search a text query against video scene embeddings. Marengo 3.0 puts text and video in the same 512-dim space, so this works without any cross-modal bridging code."
+              caption="A text query gets embedded by Marengo into the same vector space as the video scenes, so you can search across modalities in two lines."
             />
           </div>
         </section>
@@ -477,20 +436,9 @@ export default function HowItWorksPage() {
             Content
           </h2>
           <p className="text-sm text-[var(--text-secondary)] leading-relaxed">
-            25 longform videos from 11 creators across four categories: interview (40%),
-            commentary (30%), creative (20%), educational (10%). The list lives in{" "}
-            <code className="text-[11px] font-[family-name:var(--font-mono)] text-[var(--text-primary)]">
-              scripts/curate_videos.csv
-            </code>
-            , downloaded with{" "}
-            <code className="text-[11px] font-[family-name:var(--font-mono)] text-[var(--text-primary)]">
-              yt-dlp
-            </code>{" "}
-            and indexed in the TwelveLabs index{" "}
-            <code className="text-[11px] font-[family-name:var(--font-mono)] text-[var(--text-primary)]">
-              69c37b6708cd679f8afbd748
-            </code>
-            .
+            25 longform videos from 11 creators, sourced from YouTube. The mix skews
+            toward interviews (40%) and commentary (30%), with creative (20%) and
+            educational (10%) rounding it out.
           </p>
         </section>
 
@@ -500,11 +448,8 @@ export default function HowItWorksPage() {
             Frontend
           </h2>
           <p className="text-sm text-[var(--text-secondary)] leading-relaxed">
-            Next.js 16 (App Router), React 19, TypeScript, Tailwind CSS v4, and{" "}
-            <code className="text-[11px] font-[family-name:var(--font-mono)] text-[var(--text-primary)]">
-              hls.js
-            </code>{" "}
-            for video playback. Full source is in the{" "}
+            Next.js with TypeScript and Tailwind for the UI, HLS for video playback.
+            Full source is in the{" "}
             <a
               href={REPO_URL}
               target="_blank"
@@ -539,7 +484,7 @@ export default function HowItWorksPage() {
               href="https://docs.pixeltable.com"
               emoji="📘"
               title="Pixeltable docs"
-              description="Tables, computed columns, embedding indexes, UDFs."
+              description="Full reference for tables, computed columns, and embedding indexes."
             />
             <ResourceTile
               href={REPO_URL}
