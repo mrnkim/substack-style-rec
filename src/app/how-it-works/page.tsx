@@ -147,7 +147,7 @@ export default function HowItWorksPage() {
           </span>
           <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[var(--accent-muted)] border border-[var(--border-accent)] text-xs font-medium text-[var(--accent)]">
             <span aria-hidden>◆</span>
-            Pixeltable · Python data layer
+            Pixeltable · multimodal backend for AI apps
           </span>
         </div>
 
@@ -211,11 +211,11 @@ export default function HowItWorksPage() {
                 </h3>
               </div>
               <p className="text-sm text-[var(--text-secondary)] leading-relaxed">
-                Pixeltable is an open-source backend for building multimodal AI applications
-                in Python. In this app, the videos, embeddings, and Analyze results all live
-                in Pixeltable tables. When a new video is added, Pixeltable keeps everything
-                in sync — it calls Marengo, runs Analyze, and updates the index without any
-                extra plumbing.
+                Pixeltable is a multimodal backend for AI apps in Python, created by the team
+                behind Apache Parquet and Apache Impala (Apache 2.0 license). In this app,
+                the videos, embeddings, and Analyze results all live in Pixeltable tables.
+                When a new video is added, Pixeltable keeps everything in sync — it calls
+                Marengo, runs Analyze, and updates the index without any extra plumbing.
               </p>
               <div className="mt-4 flex flex-wrap gap-x-4 gap-y-2 text-xs font-medium">
                 <a
@@ -257,35 +257,6 @@ export default function HowItWorksPage() {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-10">
             <div className="p-5 rounded-[var(--radius-lg)] border border-[var(--border-default)] bg-[var(--bg-card)]">
               <div className="flex items-center gap-2 mb-3">
-                <span className="text-base text-[var(--text-secondary)]" aria-hidden>○</span>
-                <h3 className="text-sm font-semibold text-[var(--text-primary)]">
-                  Frontend (Next.js)
-                </h3>
-              </div>
-              <ul className="text-xs text-[var(--text-secondary)] leading-relaxed space-y-1.5">
-                <li>Tracks which creators you subscribe to and what you&apos;ve watched</li>
-                <li>Renders all the pages, handles navigation</li>
-                <li>Saves your state in the browser so it survives a refresh</li>
-              </ul>
-            </div>
-
-            <div className="p-5 rounded-[var(--radius-lg)] border border-[var(--border-accent)] bg-[var(--bg-card)]">
-              <div className="flex items-center gap-2 mb-3">
-                <span className="text-base text-[var(--accent)]" aria-hidden>◆</span>
-                <h3 className="text-sm font-semibold text-[var(--text-primary)]">
-                  Pixeltable
-                </h3>
-              </div>
-              <ul className="text-xs text-[var(--text-secondary)] leading-relaxed space-y-1.5">
-                <li>Stores videos and automatically computes new columns when data arrives</li>
-                <li>Runs similarity queries against the embedding index</li>
-                <li>Mixes subscribed and new creators (70/30) so recommendations stay diverse</li>
-                <li>Generates the &ldquo;Because you watched&hellip;&rdquo; explanation text</li>
-              </ul>
-            </div>
-
-            <div className="p-5 rounded-[var(--radius-lg)] border border-[var(--border-default)] bg-[var(--bg-card)]">
-              <div className="flex items-center gap-2 mb-3">
                 <span className="text-base text-[var(--accent)]" aria-hidden>⬡</span>
                 <h3 className="text-sm font-semibold text-[var(--text-primary)]">
                   TwelveLabs
@@ -297,6 +268,35 @@ export default function HowItWorksPage() {
                 <li>Hosts the uploaded videos and serves HLS streams</li>
               </ul>
             </div>
+
+            <div className="p-5 rounded-[var(--radius-lg)] border border-[var(--border-accent)] bg-[var(--bg-card)]">
+              <div className="flex items-center gap-2 mb-3">
+                <span className="text-base text-[var(--accent)]" aria-hidden>◆</span>
+                <h3 className="text-sm font-semibold text-[var(--text-primary)]">
+                  Pixeltable
+                </h3>
+              </div>
+              <ul className="text-xs text-[var(--text-secondary)] leading-relaxed space-y-1.5">
+                <li>Stores videos, embeddings, and Analyze results in one place — no separate vector DB or file store</li>
+                <li>Runs similarity queries against the embedding index</li>
+                <li>Mixes subscribed and new creators (70/30) so recommendations stay diverse</li>
+                <li>Generates the &ldquo;Because you watched&hellip;&rdquo; explanation text</li>
+              </ul>
+            </div>
+
+            <div className="p-5 rounded-[var(--radius-lg)] border border-[var(--border-default)] bg-[var(--bg-card)]">
+              <div className="flex items-center gap-2 mb-3">
+                <span className="text-base text-[var(--text-secondary)]" aria-hidden>○</span>
+                <h3 className="text-sm font-semibold text-[var(--text-primary)]">
+                  Frontend (Next.js)
+                </h3>
+              </div>
+              <ul className="text-xs text-[var(--text-secondary)] leading-relaxed space-y-1.5">
+                <li>Tracks which creators you subscribe to and what you&apos;ve watched</li>
+                <li>Renders all the pages, handles navigation</li>
+                <li>Saves your state in the browser so it survives a refresh</li>
+              </ul>
+            </div>
           </div>
 
           {/* Four-step flow */}
@@ -306,8 +306,9 @@ export default function HowItWorksPage() {
             </h3>
             <div className="border-l-0">
               <StepCard number={1} title="Ingest">
-                25 curated videos sourced from YouTube get loaded into Pixeltable
-                along with metadata about each creator.
+                25 longform videos from 11 creators, sourced from YouTube, get loaded
+                into Pixeltable along with metadata about each creator. The mix covers
+                interviews, commentary, creative, and educational content.
               </StepCard>
               <StepCard number={2} title="Scene-split">
                 Pixeltable detects natural scene boundaries in each video and splits
@@ -408,38 +409,6 @@ export default function HowItWorksPage() {
           </div>
         </section>
 
-        {/* Content */}
-        <section className="px-8 max-w-4xl">
-          <h2 className="text-xs uppercase tracking-wider text-[var(--text-tertiary)] mb-3">
-            Content
-          </h2>
-          <p className="text-sm text-[var(--text-secondary)] leading-relaxed">
-            25 longform videos from 11 creators, sourced from YouTube. The mix skews
-            toward interviews (40%) and commentary (30%), with creative (20%) and
-            educational (10%) rounding it out.
-          </p>
-        </section>
-
-        {/* Frontend */}
-        <section className="px-8 max-w-4xl">
-          <h2 className="text-xs uppercase tracking-wider text-[var(--text-tertiary)] mb-3">
-            Frontend
-          </h2>
-          <p className="text-sm text-[var(--text-secondary)] leading-relaxed">
-            Next.js with TypeScript and Tailwind for the UI, HLS for video playback.
-            Full source is in the{" "}
-            <a
-              href={REPO_URL}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-[var(--accent)] hover:text-[var(--accent-hover)] transition-colors"
-            >
-              repo
-            </a>
-            .
-          </p>
-        </section>
-
         {/* Resources */}
         <section className="px-8 max-w-5xl">
           <h2 className="text-xs uppercase tracking-wider text-[var(--text-tertiary)] mb-4">
@@ -447,22 +416,22 @@ export default function HowItWorksPage() {
           </h2>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
             <ResourceTile
-              href="https://github.com/pixeltable/pixeltable-starter-kit"
+              href="https://docs.twelvelabs.io"
+              emoji="⬡"
+              title="TwelveLabs docs"
+              description="Marengo embeddings, Analyze API, and video indexing."
+            />
+            <ResourceTile
+              href="https://docs.pixeltable.com"
               emoji="◆"
-              title="Pixeltable starter kit"
-              description="A working starter app to clone and adapt."
+              title="Pixeltable docs"
+              description="Learn how to build your own app with Pixeltable."
             />
             <ResourceTile
               href="https://docs.pixeltable.com/howto/providers/working-with-twelvelabs.md"
               emoji="📗"
               title="Pixeltable + TwelveLabs guide"
-              description="Official walkthrough for wiring TwelveLabs into Pixeltable."
-            />
-            <ResourceTile
-              href="https://docs.pixeltable.com"
-              emoji="📘"
-              title="Pixeltable docs"
-              description="Full reference for tables, computed columns, and embedding indexes."
+              description="Walkthrough for wiring the two together."
             />
             <ResourceTile
               href={REPO_URL}
