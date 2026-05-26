@@ -176,29 +176,12 @@ export default function HowItWorksPage() {
                   TwelveLabs
                 </h3>
               </div>
-              <p className="text-sm text-[var(--text-secondary)] leading-relaxed mb-3">
+              <p className="text-sm text-[var(--text-secondary)] leading-relaxed">
                 TwelveLabs builds models that watch and understand video the way you would —
                 they pick up on what&apos;s being said, what&apos;s on screen, and how it all fits
                 together. Two of their APIs matter here: Marengo (which turns a video clip into
-                a numeric fingerprint you can search against) and Analyze (which watches a video
-                and pulls out structured details like topic and tone).
-              </p>
-              <p className="text-sm text-[var(--text-secondary)] leading-relaxed">
-                In this app, Marengo runs on every scene to produce a searchable embedding.
-                Analyze runs once per video to tag it
-                with{" "}
-                <code className="text-[11px] font-[family-name:var(--font-mono)] text-[var(--text-primary)]">
-                  topic
-                </code>
-                ,{" "}
-                <code className="text-[11px] font-[family-name:var(--font-mono)] text-[var(--text-primary)]">
-                  style
-                </code>
-                , and{" "}
-                <code className="text-[11px] font-[family-name:var(--font-mono)] text-[var(--text-primary)]">
-                  tone
-                </code>
-                .
+                a searchable embedding) and Analyze (which pulls out structured details
+                like topic, style, and tone).
               </p>
               <div className="mt-4 flex gap-4 text-xs font-medium">
                 <a
@@ -227,17 +210,12 @@ export default function HowItWorksPage() {
                   Pixeltable
                 </h3>
               </div>
-              <p className="text-sm text-[var(--text-secondary)] leading-relaxed mb-3">
-                Pixeltable is an open-source Python library that acts as the data layer between
-                your app and your AI models. You describe what you want computed (embeddings,
-                API calls, transforms) as columns in a table, and Pixeltable handles running
-                those computations whenever new data shows up.
-              </p>
               <p className="text-sm text-[var(--text-secondary)] leading-relaxed">
-                In this app, every TwelveLabs call is wired up as a Pixeltable computed column.
-                When a new video is inserted, the embeddings and Analyze results get computed
-                automatically. Recommendations are just similarity queries against the local
-                index — no extra infrastructure needed.
+                Pixeltable is an open-source backend for building multimodal AI applications
+                in Python. In this app, the videos, embeddings, and Analyze results all live
+                in Pixeltable tables. When a new video is added, Pixeltable keeps everything
+                in sync — it calls Marengo, runs Analyze, and updates the index without any
+                extra plumbing.
               </p>
               <div className="mt-4 flex flex-wrap gap-x-4 gap-y-2 text-xs font-medium">
                 <a
