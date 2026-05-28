@@ -25,6 +25,7 @@ CORS_ORIGINS: list[str] = [
     if origin.strip()
 ]
 
+# Keep in sync with the copy in src/lib/twelve-labs.ts (separate Python/TS runtimes).
 CREATOR_DESCRIPTIONS: dict[str, str] = {
     "UCPD_bxCRGpmmeQcbe2kpPaA": "Home of Hot Ones and the best food content on the internet.",
     "UC-b3c7kxa5vU-bnmaROgvog": "Business strategy, branding, and design education for creative professionals.",

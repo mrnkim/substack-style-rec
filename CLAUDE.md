@@ -62,7 +62,7 @@ Pages → src/lib/api.ts → FastAPI backend (backend/) → Pixeltable → TL Em
 - **`src/lib/twelve-labs.ts`** — Server-side TL API client; fetches videos from index, maps `user_metadata` to `Video` type
 - **`src/lib/api.ts`** — Client-side fetch helpers: `getVideos`, `getVideo`, `getCreators`, `getCreator`, `getForYouRecommendations`, `getSimilarVideos`, `getCreatorCatalog`, `searchVideos`
 - **`src/lib/types.ts`** — Core domain types: `Video`, `Creator`, `Recommendation`, `UserState`; `attributes` is optional (populated when Analyze API runs)
-- **`src/lib/user-state.tsx`** — React Context for simulated user state (subscriptions + watch history), persisted to localStorage under key `substack-rec-user-state`
+- **`src/lib/user-state.tsx`** — React Context for simulated user state (subscriptions + watch history), persisted to localStorage under key `curatorai-user-state`
 - **`src/components/video-player.tsx`** — HLS video player using hls.js
 
 ### Routes

@@ -10,7 +10,8 @@ const API_KEY = process.env.TWELVELABS_API_KEY!;
 const INDEX_ID = process.env.TWELVELABS_INDEX_ID!;
 const BASE_URL = "https://api.twelvelabs.io/v1.3";
 
-// Creator descriptions (not stored in TL — static enrichment)
+// Creator descriptions (not stored in TL — static enrichment).
+// Keep in sync with the copy in backend/config.py (separate TS/Python runtimes).
 const CREATOR_DESCRIPTIONS: Record<string, string> = {
   "UCPD_bxCRGpmmeQcbe2kpPaA": "Home of Hot Ones and the best food content on the internet.",
   "UC-b3c7kxa5vU-bnmaROgvog": "Business strategy, branding, and design education for creative professionals.",

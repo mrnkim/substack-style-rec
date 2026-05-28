@@ -141,7 +141,7 @@ Add to the root `.env.local`:
 NEXT_PUBLIC_API_BASE=http://localhost:8000/api
 ```
 
-Without this, the browser talks to the Next.js `/api/*` routes instead of FastAPI + Pixeltable, so behavior will not match the backend docs.
+Without this, the browser talks to the Next.js `/api/*` routes instead of FastAPI + Pixeltable, so behavior will not match the backend docs. The `/api/*` fallback only serves catalog browsing (videos/creators) via the Twelve Labs API directly — For-You recommendations and semantic search require `NEXT_PUBLIC_API_BASE` pointed at the FastAPI backend.
 
 ### Run order (follow once per machine)
 
