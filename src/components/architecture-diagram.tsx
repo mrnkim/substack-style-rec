@@ -22,7 +22,7 @@ const TIPS: Record<string, string> = {
   "Twelve Labs":
     "Multimodal video understanding API. Pixeltable's Twelve Labs integration handles auth, batching, retries, and stores vectors as computed columns automatically.",
   embed:
-    "Embed API v2 with Marengo 3.0. Returns 512-dim vectors that capture visual, speech, audio, and text.",
+    "Embed API v2 with Marengo 3.0. Returns 512-dim vectors that capture the visual content of each scene.",
   analyze:
     "Analyze API extracting structured attributes: topic, style, and tone from video content.",
 };
