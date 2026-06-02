@@ -446,15 +446,16 @@ export default function HowItWorksPage() {
                 </p>
               </div>
               <div className="p-5 rounded-[var(--radius-lg)] border border-[var(--border-default)] bg-[var(--bg-card)]">
-                <div className="text-[11px] font-medium text-[var(--text-tertiary)] uppercase tracking-wide mb-2">
-                  For recommendations · never
+                <div className="text-[11px] font-medium text-[var(--accent)] uppercase tracking-wide mb-2">
+                  For recommendations · live
                 </div>
                 <div className="text-sm text-[var(--text-primary)] font-semibold mb-2">
-                  No live calls
+                  Short query clip per request
                 </div>
                 <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
-                  Homepage, watch page, and creator catalogs all serve from pre-computed
-                  embeddings.
+                  Homepage, watch, and creator pages query the cached scene index, sending
+                  a few short clips from what you've watched to Marengo as the query —
+                  never full videos.
                 </p>
               </div>
             </div>
