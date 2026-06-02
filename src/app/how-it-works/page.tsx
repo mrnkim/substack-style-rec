@@ -415,10 +415,10 @@ export default function HowItWorksPage() {
               heading="What runs locally vs. what hits the API"
             />
             <p className="text-sm text-[var(--text-secondary)] mb-6 max-w-2xl">
-              TwelveLabs runs in two places: once per video at ingest, and once per
-              text search. Every other request (homepage, watch page, creator catalog)
-              is served from embeddings Pixeltable already cached locally, so nothing
-              leaves your backend.
+              TwelveLabs runs in a few places: once per video at ingest, and live for
+              each search or recommendation request to embed the query. The scene index
+              itself stays cached in Pixeltable, so the target embeddings are never
+              recomputed — only the small query embedding leaves your backend.
             </p>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               <div className="p-5 rounded-[var(--radius-lg)] border border-[var(--border-default)] bg-[var(--bg-card)]">
