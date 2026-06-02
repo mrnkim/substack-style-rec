@@ -227,11 +227,10 @@ export default function HowItWorksPage() {
                   </h3>
                 </div>
                 <p className="text-sm text-[var(--text-secondary)] leading-relaxed">
-                  TwelveLabs builds models that watch and understand video the way you would.
-                  They pick up on what&apos;s being said, what&apos;s on screen, and how it all
-                  fits together. Two of their APIs matter here: Marengo (which turns a video
-                  clip into a searchable embedding) and Analyze (which pulls out structured
-                  details like topic, style, and tone).
+                  TwelveLabs builds models that watch and understand video. Two of their
+                  APIs matter here: Marengo (which turns a video clip into a searchable
+                  embedding capturing the visual content of the scene) and Analyze (which
+                  pulls out structured details like topic, style, and tone).
                 </p>
                 <div className="mt-4 flex gap-4 text-xs font-medium">
                   <a
