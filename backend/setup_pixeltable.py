@@ -216,12 +216,22 @@ def setup(full: bool = False):
             if_exists="ignore",
         )
 
+        # Embed each scene clip ONCE by building the embedding index directly on
+        # the video_segment column. Pixeltable stores the resulting Marengo vectors
+        # in the index's value column. There is no separate embedding pass:
+        #   - string=/image=/video= queries embed the query input at search time
+        #   - the stored scene vectors are read back via
+        #     video_segment.embedding(idx="scene_marengo") and reused for
+        #     recommendations (similarity(vector=...)) — no query-time re-upload.
+        # add_embedding_index adds the value column with on_error='ignore', so the
+        # few scenes over Marengo's 600s cap are stored NULL rather than aborting.
         video_scenes.add_embedding_index(
             "video_segment",
             embedding=marengo,
             idx_name="scene_marengo",
             if_exists="ignore",
         )
+
         scene_count = video_scenes.count()
         logger.info("  video_scenes: %d scenes indexed", scene_count)
     except Exception as exc:

@@ -1,15 +1,14 @@
 """Recommendation endpoints: for-you, similar, creator-catalog.
 
 Query strategy for scene-based recommendations:
-1. Best: grab representative scene segments from the watched video and query
-   with those clips (video-to-video via Marengo, always under the 36MB embed cap).
+1. Best: reuse the watched video's precomputed scene vectors and query the scene
+   index with similarity(vector=...) (video-to-video via Marengo, no query-time upload).
 2. Fallback: use a rich text query (title + topics) against scene embeddings.
 3. Last resort: title-only embedding index on the videos table.
 """
 
 import logging
 from collections import defaultdict
-from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
 import pixeltable as pxt
@@ -52,35 +51,24 @@ def _apply_diversity(candidates: list[dict], max_per_creator: int = 2) -> list[d
     return result
 
 
-def _get_ref_scene_segments(scenes_t, video_id: str, max_segments: int = MAX_SCENE_QUERIES) -> list[str]:
-    """Get representative scene segment file paths for a video.
+def _get_ref_scene_vectors(scenes_t, video_id: str, max_segments: int = MAX_SCENE_QUERIES) -> list:
+    """Get representative scene embedding vectors for a video.
 
-    Samples evenly-spaced scenes from the video to use as query inputs.
-    Each scene clip is typically a few seconds — well under the 36MB embed cap.
+    Reads the Marengo vectors stored in the scene_marengo embedding index via
+    video_segment.embedding() and samples evenly-spaced scenes. Querying with these
+    stored vectors avoids re-uploading/re-embedding clips to Twelve Labs at query
+    time — the scene was already embedded at setup, so we reuse that vector.
     """
     try:
-        all_segments = list(
+        rows = list(
             scenes_t.where(scenes_t.id == video_id)
-            .select(scenes_t.video_segment)
+            .select(vec=scenes_t.video_segment.embedding(idx="scene_marengo"))
             .collect()
         )
     except Exception:
         return []
 
-    if not all_segments:
-        return []
-
-    valid = []
-    for row in all_segments:
-        seg = row.get("video_segment")
-        if seg:
-            p = Path(str(seg))
-            try:
-                if p.is_file() and p.stat().st_size <= config.TWELVELABS_EMBED_VIDEO_MAX_BYTES:
-                    valid.append(str(p))
-            except OSError:
-                continue
-
+    valid = [r["vec"] for r in rows if r.get("vec") is not None]
     if not valid:
         return []
 
@@ -121,35 +109,39 @@ def _similarity_candidates(
     ref_id = ref.get("id", "")
 
     if scenes_t is not None:
-        # Strategy 1: Query with actual scene segments from the reference video
-        segments = _get_ref_scene_segments(scenes_t, ref_id)
-        if segments:
+        # Strategy 1: Query with the reference video's pre-computed scene vectors.
+        # These were embedded at setup, so we reuse the stored Marengo vector
+        # (similarity(vector=...)) instead of re-uploading the clip at query time.
+        vectors = _get_ref_scene_vectors(scenes_t, ref_id)
+        if vectors:
             try:
                 all_candidates: dict[str, dict] = {}
-                per_segment_limit = max(limit // len(segments), 5)
-                for seg_path in segments:
+                per_segment_limit = max(limit // len(vectors), 5)
+                for vec in vectors:
                     rows = _scene_similarity(
                         scenes_t, exclude_ids | {ref_id}, per_segment_limit, creator_id,
-                        video=seg_path,
+                        vector=vec,
                     )
                     for r in rows:
                         vid = r["id"]
-                        if vid not in all_candidates or (r.get("score", 0) > all_candidates[vid].get("score", 0)):
+                        if vid not in all_candidates or (
+                            (r.get("score") or 0) > (all_candidates[vid].get("score") or 0)
+                        ):
                             all_candidates[vid] = r
 
                 if all_candidates:
                     ranked = sorted(
                         all_candidates.values(),
-                        key=lambda x: x.get("score", 0),
+                        key=lambda x: x.get("score") or 0,
                         reverse=True,
                     )[:limit]
                     logger.info(
-                        "  [scene index] query=%d scene segments (video-to-video)",
-                        len(segments),
+                        "  [scene index] query=%d scene vectors (vector reuse)",
+                        len(vectors),
                     )
                     return ranked
             except Exception as exc:
-                logger.warning("scene-segment similarity failed (%s), trying text", exc)
+                logger.warning("scene-vector similarity failed (%s), trying text", exc)
 
         # Strategy 2: Rich text query (title + topics) against scene embeddings
         text_query = _build_text_query(ref)
@@ -281,7 +273,7 @@ def for_you(body: ForYouRequest):
                 candidate_scores[c["id"]] = c
 
     ranked = sorted(
-        candidate_scores.values(), key=lambda x: x.get("score", 0), reverse=True
+        candidate_scores.values(), key=lambda x: x.get("score") or 0, reverse=True
     )
     for c in ranked:
         vid = by_id.get(c["id"], {})
@@ -446,13 +438,13 @@ def creator_catalog(body: CreatorCatalogRequest):
                     body.limit,
                     creator_id=body.creator_id,
                 ):
-                    if c["id"] not in best or c.get("score", 0) > best[c["id"]].get(
-                        "score", 0
+                    if c["id"] not in best or (c.get("score") or 0) > (
+                        best[c["id"]].get("score") or 0
                     ):
                         best[c["id"]] = c
 
             ranked = sorted(
-                best.values(), key=lambda x: x.get("score", 0), reverse=True
+                best.values(), key=lambda x: x.get("score") or 0, reverse=True
             )
             _attach_attrs(ranked, videos_t)
             recommended = [
