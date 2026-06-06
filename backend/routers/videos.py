@@ -149,10 +149,20 @@ def _attach_attrs(rows: list[dict], videos_t) -> None:
         logger.debug("Could not load attributes: %s", e)
 
 
+def _build_creator_response(cid: str, info: dict) -> CreatorResponse:
+    """Build a CreatorResponse from a creators_map info dict (missing keys default)."""
+    return CreatorResponse(
+        id=cid,
+        name=info.get("name", ""),
+        avatar_url=info.get("avatar_url", ""),
+        description=info.get("description", ""),
+        video_count=info.get("video_count", 0),
+    )
+
+
 def _build_video_response(row: dict, creators_map: dict[str, dict]) -> VideoResponse:
     """Convert a Pixeltable row dict into a VideoResponse with nested creator."""
     cid = row.get("creator_id", "")
-    cdata = creators_map.get(cid, {})
 
     attributes = None
     if row.get("topic") or row.get("style") or row.get("tone"):
@@ -165,13 +175,7 @@ def _build_video_response(row: dict, creators_map: dict[str, dict]) -> VideoResp
     return VideoResponse(
         id=row["id"],
         title=row.get("title", ""),
-        creator=CreatorResponse(
-            id=cid,
-            name=cdata.get("name", ""),
-            avatar_url=cdata.get("avatar_url", ""),
-            description=cdata.get("description", ""),
-            video_count=cdata.get("video_count", 0),
-        ),
+        creator=_build_creator_response(cid, creators_map.get(cid, {})),
         category=row.get("category", "interview"),
         duration=row.get("duration", 0),
         thumbnail_url=row.get("thumbnail_url", ""),

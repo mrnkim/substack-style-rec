@@ -17,7 +17,6 @@ import config
 from models import (
     CreatorCatalogRequest,
     CreatorCatalogResponse,
-    CreatorResponse,
     ForYouRequest,
     RecommendationResponse,
     RecommendationsResponse,
@@ -25,6 +24,7 @@ from models import (
 )
 from routers.videos import (
     _attach_attrs,
+    _build_creator_response,
     _build_video_response,
     _get_scenes_table,
     _load_creators_map,
@@ -38,6 +38,17 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/recommendations", tags=["recommendations"])
 
 MAX_SCENE_QUERIES = 2
+
+
+def _score(c: dict) -> float:
+    """Candidate score with a 0.0 fallback (scores can be None)."""
+    return c.get("score") or 0.0
+
+
+def _round_score(c: dict) -> float | None:
+    """Rounded display score, or None when absent/zero."""
+    s = c.get("score")
+    return round(s, 4) if s else None
 
 
 def _apply_diversity(candidates: list[dict], max_per_creator: int = 2) -> list[dict]:
@@ -124,15 +135,15 @@ def _similarity_candidates(
                     )
                     for r in rows:
                         vid = r["id"]
-                        if vid not in all_candidates or (
-                            (r.get("score") or 0) > (all_candidates[vid].get("score") or 0)
+                        if vid not in all_candidates or _score(r) > _score(
+                            all_candidates[vid]
                         ):
                             all_candidates[vid] = r
 
                 if all_candidates:
                     ranked = sorted(
                         all_candidates.values(),
-                        key=lambda x: x.get("score") or 0,
+                        key=_score,
                         reverse=True,
                     )[:limit]
                     logger.info(
@@ -187,7 +198,7 @@ def _to_rec(
 ) -> RecommendationResponse:
     return RecommendationResponse(
         video=_build_video_response(candidate, creators_map),
-        score=round(candidate["score"], 4) if candidate.get("score") else None,
+        score=_round_score(candidate),
         reason=generate_reason(source_video, candidate, rec_source, subscriptions),
         matched_attributes=_matched_attrs(source_video, candidate),
         source=rec_source,
@@ -266,14 +277,14 @@ def for_you(body: ForYouRequest):
         for c in _similarity_candidates(
             videos_t, w_vid, exclude, body.limit * 3
         ):
-            score = c.get("score") or 0.0
-            best = candidate_scores.get(c["id"], {}).get("score") or 0.0
-            if c["id"] not in candidate_scores or score > best:
+            if c["id"] not in candidate_scores or _score(c) > _score(
+                candidate_scores.get(c["id"], {})
+            ):
                 c["_source_video"] = w_vid
                 candidate_scores[c["id"]] = c
 
     ranked = sorted(
-        candidate_scores.values(), key=lambda x: x.get("score") or 0, reverse=True
+        candidate_scores.values(), key=_score, reverse=True
     )
     for c in ranked:
         vid = by_id.get(c["id"], {})
@@ -391,13 +402,7 @@ def creator_catalog(body: CreatorCatalogRequest):
         raise HTTPException(status_code=404, detail="Creator not found")
 
     info = creators_map[body.creator_id]
-    creator_resp = CreatorResponse(
-        id=body.creator_id,
-        name=info["name"],
-        avatar_url=info["avatar_url"],
-        description=info["description"],
-        video_count=info["video_count"],
-    )
+    creator_resp = _build_creator_response(body.creator_id, info)
 
     # Popular: this creator's videos sorted by recency
     popular_rows = list(
@@ -438,19 +443,17 @@ def creator_catalog(body: CreatorCatalogRequest):
                     body.limit,
                     creator_id=body.creator_id,
                 ):
-                    if c["id"] not in best or (c.get("score") or 0) > (
-                        best[c["id"]].get("score") or 0
-                    ):
+                    if c["id"] not in best or _score(c) > _score(best[c["id"]]):
                         best[c["id"]] = c
 
             ranked = sorted(
-                best.values(), key=lambda x: x.get("score") or 0, reverse=True
+                best.values(), key=_score, reverse=True
             )
             _attach_attrs(ranked, videos_t)
             recommended = [
                 RecommendationResponse(
                     video=_build_video_response(r, creators_map),
-                    score=round(r.get("score", 0), 4) if r.get("score") else None,
+                    score=_round_score(r),
                     reason="Recommended based on your interests",
                     matched_attributes=[],
                     source="subscription",

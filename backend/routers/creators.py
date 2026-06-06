@@ -6,9 +6,10 @@ from fastapi import APIRouter, HTTPException
 import pixeltable as pxt
 
 import config
-from models import CreatorDetailResponse, CreatorResponse, CreatorsListResponse
+from models import CreatorDetailResponse, CreatorsListResponse
 from routers.videos import (
     _attach_attrs,
+    _build_creator_response,
     _build_video_response,
     _load_creators_map,
     _select_videos,
@@ -22,14 +23,7 @@ router = APIRouter(prefix="/api", tags=["creators"])
 def list_creators():
     creators_map = _load_creators_map()
     data = [
-        CreatorResponse(
-            id=cid,
-            name=info["name"],
-            avatar_url=info["avatar_url"],
-            description=info["description"],
-            video_count=info["video_count"],
-        )
-        for cid, info in creators_map.items()
+        _build_creator_response(cid, info) for cid, info in creators_map.items()
     ]
     return CreatorsListResponse(data=data)
 
@@ -50,13 +44,7 @@ def get_creator(creator_id: str):
     _attach_attrs(rows, videos_t)
 
     return CreatorDetailResponse(
-        creator=CreatorResponse(
-            id=creator_id,
-            name=info["name"],
-            avatar_url=info["avatar_url"],
-            description=info["description"],
-            video_count=info["video_count"],
-        ),
+        creator=_build_creator_response(creator_id, info),
         videos=[_build_video_response(r, creators_map) for r in rows],
         total_videos=len(rows),
     )
