@@ -4,11 +4,13 @@ FROM python:3.13-slim
 #   ffmpeg          — required by scenedetect + pixeltable video_splitter
 #   libgl1 libglib  — required by opencv-python-headless on slim Debian
 #   ca-certificates — outbound HTTPS to Twelve Labs
+#   curl            — used by download_videos.py --r2 to fetch the video mirror
 RUN apt-get update && apt-get install -y --no-install-recommends \
       ffmpeg \
       libgl1 \
       libglib2.0-0 \
       ca-certificates \
+      curl \
     && rm -rf /var/lib/apt/lists/*
 
 RUN pip install --no-cache-dir uv
