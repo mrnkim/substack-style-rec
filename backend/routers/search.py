@@ -124,7 +124,7 @@ def search_videos(
 
 
 @router.post("/search", response_model=SearchResponse)
-async def search_multimodal(
+def search_multimodal(
     q: str | None = Form(None),
     file: UploadFile | None = File(None),
     creator_id: str | None = Form(None),

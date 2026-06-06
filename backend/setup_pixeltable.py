@@ -157,7 +157,6 @@ def setup(full: bool = False):
             }
         )
 
-    has_video_files = len(missing_files) < len(video_rows)
     if missing_files:
         logger.warning(
             "  %d/%d videos missing local files (yt-dlp blocked on cloud IPs is common). "
