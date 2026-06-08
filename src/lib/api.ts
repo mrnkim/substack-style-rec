@@ -11,6 +11,33 @@ import { withCache } from "./request-cache";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "/api";
 
+// Pixeltable's videos.insert(..., on_error="ignore") doesn't collapse
+// primary-key collisions across re-runs, so the table can carry duplicate
+// rows from earlier setup attempts. Dedupe at the API boundary so the UI
+// never renders the same id twice.
+function dedupeById<T extends { id: string }>(items: T[]): T[] {
+  const seen = new Set<string>();
+  const out: T[] = [];
+  for (const it of items) {
+    if (!it?.id || seen.has(it.id)) continue;
+    seen.add(it.id);
+    out.push(it);
+  }
+  return out;
+}
+
+function dedupeRecs(items: Recommendation[]): Recommendation[] {
+  const seen = new Set<string>();
+  const out: Recommendation[] = [];
+  for (const it of items) {
+    const id = it?.video?.id;
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    out.push(it);
+  }
+  return out;
+}
+
 // ---------------------------------------------------------------------------
 // Videos
 // ---------------------------------------------------------------------------
@@ -29,7 +56,7 @@ export async function getVideos(opts?: {
       const res = await fetch(`${API_BASE}/videos${qs ? `?${qs}` : ""}`);
       if (!res.ok) return [];
       const data = await res.json();
-      return data.data ?? [];
+      return dedupeById((data.data ?? []) as Video[]);
     } catch {
       return [];
     }
@@ -58,7 +85,7 @@ export async function getCreators(): Promise<Creator[]> {
       const res = await fetch(`${API_BASE}/creators`);
       if (!res.ok) return [];
       const data = await res.json();
-      return data.data ?? [];
+      return dedupeById((data.data ?? []) as Creator[]);
     } catch {
       return [];
     }
@@ -72,7 +99,9 @@ export async function getCreator(
     try {
       const res = await fetch(`${API_BASE}/creators/${id}`);
       if (!res.ok) return null;
-      return res.json();
+      const data = await res.json();
+      if (data?.videos) data.videos = dedupeById(data.videos as Video[]);
+      return data;
     } catch {
       return null;
     }
@@ -100,7 +129,7 @@ export async function getForYouRecommendations(
       });
       if (!res.ok) return [];
       const data = await res.json();
-      return data.recommendations ?? [];
+      return dedupeRecs((data.recommendations ?? []) as Recommendation[]);
     } catch {
       return [];
     }
@@ -122,7 +151,7 @@ export async function getSimilarVideos(
       });
       if (!res.ok) return [];
       const data = await res.json();
-      return data.recommendations ?? [];
+      return dedupeRecs((data.recommendations ?? []) as Recommendation[]);
     } catch {
       return [];
     }
@@ -144,7 +173,8 @@ export async function getCreatorCatalog(
       });
       if (!res.ok) return [];
       const data = await res.json();
-      return data.recommended ?? data.recommendations ?? [];
+      const recs = (data.recommended ?? data.recommendations ?? []) as Recommendation[];
+      return dedupeRecs(recs);
     } catch {
       return [];
     }

@@ -10,6 +10,7 @@ export function Nav() {
     { href: "/", label: "Home" },
     { href: "/explore", label: "Explore" },
     { href: "/search", label: "Search" },
+    { href: "/how-it-works", label: "How it works" },
   ];
 
   return (
