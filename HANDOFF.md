@@ -1,11 +1,47 @@
 # HANDOFF.md — Substack TV-Style Recommendation Engine
 
-> Last updated: 2026-04-18
+> Last updated: 2026-06-08
 >
 > This file is a short, current snapshot. Canonical docs:
 > - **Setup & quick start** → [`README.md`](./README.md)
 > - **Backend API spec** → [`docs/BACKEND_SPEC.md`](./docs/BACKEND_SPEC.md)
 > - **Agent guide** → [`CLAUDE.md`](./CLAUDE.md)
+
+---
+
+## Session Log — 2026-06-08 (PR #14 merge + production deploy of video-to-video)
+
+**Goal of the day:** Merge Pierre's PR #14 (real video-to-video recommendations via scene embeddings, replacing the silent title-only fallback) and get it working live on Render + Vercel.
+
+**Outcome: ✅ video-to-video recommendations are LIVE and verified.**
+Example (live `/api/recommendations/similar` on the homestead video):
+`Nordic homestead 0.796`, `underground home 0.745` — content-matched via Marengo scene embeddings, not title text.
+
+### What was done
+1. **PR #14 merged.** It was a cross-repo PR from `pierrebrunelle:updates` → `mrnkim:main`. Resolved the one conflict (`src/lib/api.ts`: kept BOTH the `withCache` wrapper and `dedupeById`/`dedupeRecs` — dedupe runs inside each cache callback). Fast-forwarded `main` to `230e00e`, closed PR #14 with a merge comment (cross-repo PRs don't auto-close).
+2. **Added `curl` to the Docker image** (`6c8d00e`) — `download_videos.py --r2` shells out to `curl`, which the slim base image lacked.
+3. **Rebuilt the scene pipeline on Render** (the deployed DB had the embedding index missing AND old `fps=2` scenes):
+   - Dropped old `video_scenes` view + `scenes` column, re-downloaded 25 videos (`--r2 --full`), recomputed `scene_detect_histogram(fps=1, threshold=0.9, min_scene_len=900)` → **476 scenes** (vs old 1707), rebuilt the `scene_marengo` embedding index.
+
+### Deployment facts (Render)
+- Service: **`substack-rec-api`**, SSH `srv-d7o1sj77f7vs7384ad70@ssh.oregon.render.com`, public URL **`https://substack-rec-api-q2ui.onrender.com`**
+- Frontend (Vercel): **`https://substack-style-rec.vercel.app`**, `CORS_ORIGINS=https://substack-style-rec.vercel.app` (correct)
+- `PIXELTABLE_HOME=/var/pixeltable` is the **persistent disk** (survives redeploys: pgdata + scene media). `/app` is **ephemeral** (wiped on every redeploy/restart — including `/app/video_files` and `/tmp`).
+- **Currently on Pro (4GB)** — was bumped from Standard (2GB) for the index build.
+
+### ⚠️ Hard-won gotchas (read before touching the Render box again)
+1. **Embedding-index build OOMs on 2GB.** Pixeltable decodes scene segments into RAM before embedding. Default `ExprEvalNode.MAX_BUFFERED_ROWS=2048` loads all 476 at once → >2GB → Render kills the container (shows as silent death, `oom_kill=0` because it's Render's own memory limit, not the Linux OOM killer). Fix used: bumped to **4GB** and monkeypatched `MAX_BUFFERED_ROWS=64` → built in 454s, peak 3.5GB. `MAX_BUFFERED_ROWS=4` *stalls* the pipeline; 64 is the working/safe value at 4GB. **This memory fix is NOT in code yet — see follow-ups.**
+2. **Changing the Render instance type breaks Postgres.** Going 2GB→4GB changed the uid Postgres runs as (data was owned by uid 1000, new instance ran pg as `pgserver` uid 1001) → `pg_ctl` fails with `could not open lock file ... Permission denied` → whole DB down → app 500s → frontend shows CORS errors (no headers on failed responses). **Fix:** `chown -R pgserver:pgserver /var/pixeltable/pgdata` + remove stale `.s.PGSQL.5432` socket and `.s.PGSQL.5432.lock`, then restart the app (`kill -TERM 1` → Render restarts the container). Scaling **back down to 2GB will likely re-break this** (ownership flips again).
+3. **Long jobs over SSH must use `setsid`** — Render kills SSH-spawned processes when the session drops, *unless* fully detached (`setsid bash -c "..." </dev/null &`).
+4. **Killed Pixeltable processes leave stale Postgres locks** (`idle in transaction`) that block ALL subsequent DB ops, including the live app. Clean with `pg_terminate_backend(pid)` on `state like '%transaction%'`.
+5. `scene_detect_histogram` on all 25 videos (~11.6h of footage) takes **~102 min single-threaded** on this box. `add_embedding_index` over 476 scenes takes ~8 min at `MAX_BUFFERED_ROWS=64`.
+
+### Follow-ups / open
+- **Scale Render back to 2GB** (serving fits in 2GB; only the build needed 4GB). Expect Postgres ownership to break on the switch — re-apply gotcha #2.
+- **Code-ify the memory fix:** make `setup_pixeltable.py`'s `add_embedding_index` honor a low `MAX_BUFFERED_ROWS` (env-configurable) so a future re-setup doesn't OOM on 2GB. Currently a manual monkeypatch only.
+- Verify the Vercel frontend renders the recommendations end-to-end (backend API confirmed working post-restart).
+
+---
 
 ## Project Overview
 
