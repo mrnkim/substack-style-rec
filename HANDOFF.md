@@ -1,11 +1,25 @@
 # HANDOFF.md — Substack TV-Style Recommendation Engine
 
-> Last updated: 2026-06-08
+> Last updated: 2026-06-09
 >
 > This file is a short, current snapshot. Canonical docs:
 > - **Setup & quick start** → [`README.md`](./README.md)
 > - **Backend API spec** → [`docs/BACKEND_SPEC.md`](./docs/BACKEND_SPEC.md)
 > - **Agent guide** → [`CLAUDE.md`](./CLAUDE.md)
+
+---
+
+## Session Log — 2026-06-09 (production recovery: "CORS error" was actually a dead Postgres)
+
+**Symptom:** Live app played video but all recommendation calls (`/api/recommendations/{similar,for-you}`) failed in the browser with "blocked by CORS policy: No Access-Control-Allow-Origin". Video still played because HLS comes straight from CloudFront, not the backend.
+
+**Root cause:** Yesterday's scale-down 4GB→2GB raced two postmasters; the survivor left a stale `.s.PGSQL.5432.lock` (pointing at dead PID 38) on the persistent disk. A later postmaster hit `FATAL: lock file ... already exists` and refused to start, so **Postgres stayed dead**. The FastAPI app's `/health` still returned 200 (no DB), but every DB-backed endpoint returned **HTTP 500 — and 500 error responses carry no CORS headers**, which the browser reports as a CORS failure. So "CORS error" was a misleading symptom of a 500, not an actual CORS misconfig (CORS_ORIGINS was correct the whole time).
+
+**Fix (non-destructive — no file deletion needed):** `kill -TERM 1` to restart the container. Postgres 16 detects the stale lock's PID is dead and **auto-clears it on startup** → DB came up clean (`database system is ready to accept connections`). After that, `similar` returned video-to-video `Nordic homestead 0.7958` (true Strategy-1 scene match, not the 0.295 text fallback). This is a lighter fix than 2026-06-08 gotcha #2's `rm` + `chown` — try a plain restart FIRST; only delete the stale lock/socket if a process still holds the old PID.
+
+**Also corrected:** the public hostname is `substack-rec-api-g2ui.onrender.com` (`g2ui`), not `q2ui` as previously written here. Wasted time hitting the wrong host (`x-render-routing: no-server` 404). Always read `RENDER_EXTERNAL_HOSTNAME` from `/proc/1/environ` to confirm. The Vercel frontend bundle was already pointing at the correct `g2ui` host.
+
+**Perf fix — `/similar` was 85s, now ~1s (matched Pierre's live deploy).** Root cause: the merged PR #14 (`updates` branch) recommendation path re-embedded the reference video's scene clips via the Twelve Labs Embed API **on every request** (`_get_ref_scene_segments` + `_scene_similarity(video=seg_path)`) — 2 clips × ~40s = 85s. Pierre's *live* site runs his `main` branch, which is the **stored-vector** approach (the `8a71d51 "use stored Marengo scene embeddings"` method, originally written here, then lost in a rollback to `archive/main-pre-rollback`). PR #14 was Pierre's `updates` branch — NOT the fast `main` he actually deploys, so we inherited the slow path. Fix: `_get_ref_scene_vectors` reads the precomputed vectors from the `scene_marengo` index via `video_segment.embedding(idx="scene_marengo")` and queries with `_scene_similarity(vector=vec)` — no query-time upload. Same true video-to-video quality (scores 0.78–0.91), ~80× faster. `_scene_similarity` already passed `**sim_kwargs` through, so only `recommendations.py` changed. how-it-works copy updated to say "cached scene vectors / reusing vectors Marengo computed at setup" instead of "sending clips to Marengo."
 
 ---
 
@@ -24,7 +38,7 @@ Example (live `/api/recommendations/similar` on the homestead video):
    - Dropped old `video_scenes` view + `scenes` column, re-downloaded 25 videos (`--r2 --full`), recomputed `scene_detect_histogram(fps=1, threshold=0.9, min_scene_len=900)` → **476 scenes** (vs old 1707), rebuilt the `scene_marengo` embedding index.
 
 ### Deployment facts (Render)
-- Service: **`substack-rec-api`**, SSH `srv-d7o1sj77f7vs7384ad70@ssh.oregon.render.com`, public URL **`https://substack-rec-api-q2ui.onrender.com`**
+- Service: **`substack-rec-api`**, SSH `srv-d7o1sj77f7vs7384ad70@ssh.oregon.render.com`, public URL **`https://substack-rec-api-g2ui.onrender.com`** (it's `g2ui`, **not** `q2ui` — confirm via `tr '\0' '\n' < /proc/1/environ | grep RENDER_EXTERNAL_HOSTNAME`). The Vercel bundle already points here correctly.
 - Frontend (Vercel): **`https://substack-style-rec.vercel.app`**, `CORS_ORIGINS=https://substack-style-rec.vercel.app` (correct)
 - `PIXELTABLE_HOME=/var/pixeltable` is the **persistent disk** (survives redeploys: pgdata + scene media). `/app` is **ephemeral** (wiped on every redeploy/restart — including `/app/video_files` and `/tmp`).
 - **Currently on Pro (4GB)** — was bumped from Standard (2GB) for the index build.

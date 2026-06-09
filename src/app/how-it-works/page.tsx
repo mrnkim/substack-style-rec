@@ -450,12 +450,13 @@ export default function HowItWorksPage() {
                   For recommendations · live
                 </div>
                 <div className="text-sm text-[var(--text-primary)] font-semibold mb-2">
-                  Short query clip per request
+                  Cached scene vectors per request
                 </div>
                 <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
-                  Homepage, watch, and creator pages query the cached scene index, sending
-                  a few short clips from what you've watched to Marengo as the query —
-                  never full videos.
+                  Homepage, watch, and creator pages match a few short clips from what
+                  you&apos;ve watched against the cached Marengo scene index — reusing the
+                  vectors Marengo computed at setup, so nothing is re-uploaded at query
+                  time and never full videos.
                 </p>
               </div>
             </div>

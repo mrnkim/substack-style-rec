@@ -68,7 +68,12 @@ def _scene_similarity(
 ) -> list[dict]:
     """Query video_segment embeddings on scenes view, deduplicate to unique videos.
 
-    Accepts any similarity kwargs: string="text", image="/path", video="/path", audio="/path".
+    Accepts any similarity kwargs: string="text", image="/path", video="/path",
+    audio="/path", or vector=<stored embedding> (reuses a precomputed Marengo vector).
+
+    The embedding index lives on the video_segment column. vector= queries reuse
+    stored scene vectors (read via video_segment.embedding()) with no re-upload,
+    while string=/image=/video= embed the query input via Marengo at search time.
     """
     sim = scenes_t.video_segment.similarity(**sim_kwargs)
     query = scenes_t
