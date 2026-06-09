@@ -19,7 +19,9 @@
 
 **Also corrected:** the public hostname is `substack-rec-api-g2ui.onrender.com` (`g2ui`), not `q2ui` as previously written here. Wasted time hitting the wrong host (`x-render-routing: no-server` 404). Always read `RENDER_EXTERNAL_HOSTNAME` from `/proc/1/environ` to confirm. The Vercel frontend bundle was already pointing at the correct `g2ui` host.
 
-**Perf fix — `/similar` was 85s, now ~1s (matched Pierre's live deploy).** Root cause: the merged PR #14 (`updates` branch) recommendation path re-embedded the reference video's scene clips via the Twelve Labs Embed API **on every request** (`_get_ref_scene_segments` + `_scene_similarity(video=seg_path)`) — 2 clips × ~40s = 85s. Pierre's *live* site runs his `main` branch, which is the **stored-vector** approach (the `8a71d51 "use stored Marengo scene embeddings"` method, originally written here, then lost in a rollback to `archive/main-pre-rollback`). PR #14 was Pierre's `updates` branch — NOT the fast `main` he actually deploys, so we inherited the slow path. Fix: `_get_ref_scene_vectors` reads the precomputed vectors from the `scene_marengo` index via `video_segment.embedding(idx="scene_marengo")` and queries with `_scene_similarity(vector=vec)` — no query-time upload. Same true video-to-video quality (scores 0.78–0.91), ~80× faster. `_scene_similarity` already passed `**sim_kwargs` through, so only `recommendations.py` changed. how-it-works copy updated to say "cached scene vectors / reusing vectors Marengo computed at setup" instead of "sending clips to Marengo."
+**Perf fix — `/similar` was 85s, now ~1s (matched Pierre's live deploy).** Root cause: the merged PR #14 (`updates` branch) recommendation path re-embedded the reference video's scene clips via the Twelve Labs Embed API **on every request** (`_get_ref_scene_segments` + `_scene_similarity(video=seg_path)`) — 2 clips × ~40s = 85s. Pierre's *live* site runs his `main` branch, which is the **stored-vector** approach (the `8a71d51 "use stored Marengo scene embeddings"` method, originally written here, then lost in a rollback to `archive/main-pre-rollback`). PR #14 was Pierre's `updates` branch — NOT the fast `main` he actually deploys, so we inherited the slow path. Fix: `_get_ref_scene_vectors` reads the precomputed vectors from the `scene_marengo` index via `video_segment.embedding(idx="scene_marengo")` and queries with `_scene_similarity(vector=vec)` — no query-time upload. Same true video-to-video quality (scores 0.78–0.91), ~80× faster. `_scene_similarity` already passed `**sim_kwargs` through, so only `recommendations.py` changed. how-it-works copy updated to say "cached scene vectors / reusing vectors Marengo computed at setup" instead of "sending clips to Marengo." **Verified live** via Render logs: `[scene index] query=2 scene vectors (vector reuse)` on every call, no fallback. Shipped in `ba800ca`.
+
+**Deploy self-heal — `entrypoint.sh` now clears the stale Postgres socket lock on boot** (`c22ff57`). This is the permanent fix for the recurring "every redeploy kills Postgres" problem (gotcha #2 below). The deploy that shipped it self-healed with no manual restart. Note: **every push to `main` triggers a full Render redeploy** (`autoDeploy: true`) — that's now safe, the container fixes itself, but expect a ~3–5 min build + swap window.
 
 ---
 
@@ -41,7 +43,7 @@ Example (live `/api/recommendations/similar` on the homestead video):
 - Service: **`substack-rec-api`**, SSH `srv-d7o1sj77f7vs7384ad70@ssh.oregon.render.com`, public URL **`https://substack-rec-api-g2ui.onrender.com`** (it's `g2ui`, **not** `q2ui` — confirm via `tr '\0' '\n' < /proc/1/environ | grep RENDER_EXTERNAL_HOSTNAME`). The Vercel bundle already points here correctly.
 - Frontend (Vercel): **`https://substack-style-rec.vercel.app`**, `CORS_ORIGINS=https://substack-style-rec.vercel.app` (correct)
 - `PIXELTABLE_HOME=/var/pixeltable` is the **persistent disk** (survives redeploys: pgdata + scene media). `/app` is **ephemeral** (wiped on every redeploy/restart — including `/app/video_files` and `/tmp`).
-- **Currently on Pro (4GB)** — was bumped from Standard (2GB) for the index build.
+- **Currently on Standard (2GB)** — was bumped to Pro (4GB) only for the one-time index build, then scaled back down (serving fits in 2GB). Re-bump to 4GB if you ever rebuild the embedding index.
 
 ### ⚠️ Hard-won gotchas (read before touching the Render box again)
 1. **Embedding-index build OOMs on 2GB.** Pixeltable decodes scene segments into RAM before embedding. Default `ExprEvalNode.MAX_BUFFERED_ROWS=2048` loads all 476 at once → >2GB → Render kills the container (shows as silent death, `oom_kill=0` because it's Render's own memory limit, not the Linux OOM killer). Fix used: bumped to **4GB** and monkeypatched `MAX_BUFFERED_ROWS=64` → built in 454s, peak 3.5GB. `MAX_BUFFERED_ROWS=4` *stalls* the pipeline; 64 is the working/safe value at 4GB. **This memory fix is NOT in code yet — see follow-ups.**
@@ -52,9 +54,12 @@ Example (live `/api/recommendations/similar` on the homestead video):
 5. `scene_detect_histogram` on all 25 videos (~11.6h of footage) takes **~102 min single-threaded** on this box. `add_embedding_index` over 476 scenes takes ~8 min at `MAX_BUFFERED_ROWS=64`.
 
 ### Follow-ups / open
-- **Scale Render back to 2GB** (serving fits in 2GB; only the build needed 4GB). Expect Postgres ownership to break on the switch — re-apply gotcha #2.
 - **Code-ify the memory fix:** make `setup_pixeltable.py`'s `add_embedding_index` honor a low `MAX_BUFFERED_ROWS` (env-configurable) so a future re-setup doesn't OOM on 2GB. Currently a manual monkeypatch only.
-- Verify the Vercel frontend renders the recommendations end-to-end (backend API confirmed working post-restart).
+
+### Done (was open)
+- ✅ Scaled Render back to 2GB (Standard). Serving runs fine.
+- ✅ Frontend renders recommendations end-to-end — confirmed via live Render logs: every `/similar` and `/for-you` logs `[scene index] query=N scene vectors (vector reuse)` (Strategy 1), no text/title fallback, scores 0.79–0.86, ~1s.
+- ✅ Stale-socket-lock on deploy fixed permanently in `entrypoint.sh` (see gotcha #2). Every push to `main` auto-redeploys and now self-heals Postgres without manual `kill -TERM 1`.
 
 ---
 
