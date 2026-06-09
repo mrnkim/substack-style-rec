@@ -40,7 +40,7 @@ Example (live `/api/recommendations/similar` on the homestead video):
    - Dropped old `video_scenes` view + `scenes` column, re-downloaded 25 videos (`--r2 --full`), recomputed `scene_detect_histogram(fps=1, threshold=0.9, min_scene_len=900)` → **476 scenes** (vs old 1707), rebuilt the `scene_marengo` embedding index.
 
 ### Deployment facts (Render)
-- Service: **`substack-rec-api`**, SSH `srv-d7o1sj77f7vs7384ad70@ssh.oregon.render.com`, public URL **`https://substack-rec-api-g2ui.onrender.com`** (it's `g2ui`, **not** `q2ui` — confirm via `tr '\0' '\n' < /proc/1/environ | grep RENDER_EXTERNAL_HOSTNAME`). The Vercel bundle already points here correctly.
+- Service: **`substack-rec-api`**, SSH handle from the Render dashboard (Service → Connect → SSH; form `srv-<service-id>@ssh.oregon.render.com`), public URL **`https://substack-rec-api-g2ui.onrender.com`** (it's `g2ui`, **not** `q2ui` — confirm via `tr '\0' '\n' < /proc/1/environ | grep RENDER_EXTERNAL_HOSTNAME`). The Vercel bundle already points here correctly.
 - Frontend (Vercel): **`https://substack-style-rec.vercel.app`**, `CORS_ORIGINS=https://substack-style-rec.vercel.app` (correct)
 - `PIXELTABLE_HOME=/var/pixeltable` is the **persistent disk** (survives redeploys: pgdata + scene media). `/app` is **ephemeral** (wiped on every redeploy/restart — including `/app/video_files` and `/tmp`).
 - **Currently on Standard (2GB)** — was bumped to Pro (4GB) only for the one-time index build, then scaled back down (serving fits in 2GB). Re-bump to 4GB if you ever rebuild the embedding index.
