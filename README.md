@@ -30,7 +30,7 @@ FastAPI Backend (localhost:8000)
        |
        v
 Pixeltable
-  ├── creators table (11 creators)
+  ├── creators table (10 creators)
   ├── videos table (25 videos + pxt.Video + scene detection + topic/style/tone)
   ├── video_scenes view (scene_detect_histogram + video_splitter mode=fast)
   ├── scene_marengo embedding index (multimodal video content per scene)
@@ -51,7 +51,7 @@ Two integration patterns, one data plane — see [Integration patterns](#integra
 - **Declarative schema** -- Define tables, computed columns, and embedding indexes. Pixeltable handles the rest.
 - **Automatic pipelines** -- INSERT a video row and embeddings + attribute extraction run automatically as computed columns. No orchestration code.
 - **Scene detection** -- `scene_detect_histogram()` automatically finds natural scene boundaries. `video_splitter(mode='fast')` splits at those points with stream copy (no re-encoding). Each scene gets its own Marengo 3.0 embedding.
-- **`.similarity()` API** -- One-line cross-modal search: `video_scenes.video_segment.similarity(string="AI technology")` finds videos by actual scene content. Powered by pgvector under the hood.
+- **`.similarity()` API** -- One-line cross-modal search: `video_scenes.video_segment.similarity(string="AI technology")` finds videos by actual scene content. Recommendations go a step further and reuse the *stored* scene vectors — `.similarity(vector=video_segment.embedding(idx="scene_marengo"))` — for true video-to-video matching with **no re-embedding at query time** (each scene was already embedded at setup). Powered by pgvector under the hood.
 - **`pxt.Video` column** -- Store video files directly in the table. Scene detection + embedding run automatically as computed columns on insert.
 
 See the [Pixeltable + Twelve Labs integration docs](https://docs.pixeltable.com/sdk/latest/twelvelabs) for the full API reference.
@@ -79,7 +79,7 @@ This is the thing to steal from this repo if you're evaluating Pixeltable: integ
 
 ## Content
 
-25 longform videos indexed in Twelve Labs, drawn from a curated set of 30 across 11 creators and 4 categories (`scripts/curate_videos.csv`):
+25 longform videos (across 10 creators) indexed in Twelve Labs, drawn from a curated set of 30 across 11 creators and 4 categories (`scripts/curate_videos.csv`):
 
 | Category | Creators | Curated |
 |---|---|---|
@@ -217,8 +217,8 @@ The disk-vs-no-disk decision is what you're choosing. Everything else is plumbin
 
 | Feature | Endpoint | How it works |
 |---|---|---|
-| **Personalized "For You"** | `POST /recommendations/for-you` | Marengo `.similarity()` on watch history, 70% subscription / 30% discovery, max 2 per creator |
-| **Similar Videos** | `POST /recommendations/similar` | Sidebar recs based on current video's embedding |
+| **Personalized "For You"** | `POST /recommendations/for-you` | Marengo `.similarity(vector=...)` reusing each watched video's precomputed scene vectors (no query-time re-embed), 70% subscription / 30% discovery, max 2 per creator |
+| **Similar Videos** | `POST /recommendations/similar` | Sidebar recs from the current video's precomputed scene vectors — true video-to-video via `.similarity(vector=...)` |
 | **Creator Catalog** | `POST /recommendations/creator-catalog` | Relevance-sorted (not recency) with `{ recommended, popular }` |
 | **Semantic Search** | `GET /search?q=` | Text-to-video via scene embeddings `.similarity(string=q)` |
 | **Multimodal Search** | `POST /search` | Image/video/audio file upload → cross-modal scene matching |
