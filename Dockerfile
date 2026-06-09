@@ -41,6 +41,27 @@ PGDATA="${PIXELTABLE_HOME:-/var/pixeltable}/pgdata"
 if [ -d "$PGDATA" ]; then
   chmod 700 "$PGDATA"
   rm -f "$PGDATA/postmaster.pid"
+  # A previous container leaves its Unix-socket lock on the persistent disk.
+  # On the next deploy a fresh postmaster sees that stale lock and refuses to
+  # start ("FATAL: lock file .s.PGSQL.5432.lock already exists"), taking the
+  # whole DB — and every DB-backed endpoint — down with a 500. At container
+  # boot no postmaster is running yet, so any such lock is stale; clear it.
+  # Guard: keep it only if its recorded PID is a *live postgres* process
+  # (defends against a coincidental PID reuse in the new namespace).
+  LOCK="$PGDATA/.s.PGSQL.5432.lock"
+  if [ -f "$LOCK" ]; then
+    LOCKPID=$(head -n1 "$LOCK" 2>/dev/null || true)
+    KEEP=0
+    if [ -n "$LOCKPID" ] && kill -0 "$LOCKPID" 2>/dev/null; then
+      if grep -qa postgres "/proc/$LOCKPID/cmdline" 2>/dev/null; then
+        KEEP=1
+      fi
+    fi
+    if [ "$KEEP" -eq 0 ]; then
+      echo "entrypoint: clearing stale Postgres socket lock (pid '$LOCKPID')"
+      rm -f "$LOCK" "$PGDATA/.s.PGSQL.5432"
+    fi
+  fi
 fi
 exec uv run uvicorn main:app --host 0.0.0.0 --port "${PORT:-8000}" --proxy-headers
 EOF
