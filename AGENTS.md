@@ -28,7 +28,12 @@ uv run main.py                                   # Start FastAPI on :8000
 # namespaces in that home (entire embedded DB), not just this repo — use per-project PIXELTABLE_HOME=./data.
 ```
 
-No test framework is configured yet.
+Focused checks use Node's built-in test runner and Python's unittest:
+
+```bash
+node --test tests/catalog.test.mjs
+cd backend && uv run python -m unittest discover -s tests
+```
 
 ## Architecture
 
@@ -132,4 +137,4 @@ CORS_ORIGINS=http://localhost:3000
 
 ## Current state
 
-Fully implemented. FastAPI + Pixeltable 0.7.12 backend with class-based schemas in `app.py`. Computed columns store scene cut times and the Analyze API topic, style, and tone. The `VideoScenes` view splits each video into clips (`video_splitter` with `mode='fast'`), and an unnamed Marengo 3.0 embedding index on `video_segment` covers search and recommendations. A title embedding index is the text fallback. Pixeltable maintains the scene index incrementally: new scenes are embedded on insert and dropped on delete, with no rebuild. All queries route through `video_scenes` when available, with the title index as fallback. Shared `_scene_similarity` / `_title_similarity` in `videos.py` eliminate code duplication. `_select_videos` fetches computed attrs in a single query pass. `_load_creators_map()` cached with 5-min TTL. Quick-start: 3 videos (~4 min setup). Full: 25 videos from the TL index with HLS playback, 10 creators. Dependencies: `scenedetect`, `opencv-python-headless`.
+FastAPI + Pixeltable 0.7.18 backend with class-based schemas in `app.py`. Computed columns store scene cut times and the Analyze API topic, style, and tone; failed Analyze calls leave tags unknown. The `VideoScenes` view splits each video into clips (`video_splitter` with `mode='fast'`), and an unnamed Marengo 3.0 embedding index on `video_segment` covers search and recommendations. A title embedding index is the text fallback. Pixeltable maintains the scene index incrementally on ordinary inserts and deletes. Recommendations reuse stored scene vectors first; text/title fallbacks call TwelveLabs. FastAPI applies the 70/30 subscription/discovery target when candidates permit and caps results at two per creator. The frontend catalog helper follows every backend page. Shared `_scene_similarity` / `_title_similarity` in `videos.py` eliminate code duplication. `_select_videos` fetches computed attrs in a single query pass. `_load_creators_map()` cached with 5-min TTL. Quick-start: 3 videos (~4 min setup). Full: 25 videos from the TL index with HLS playback, 10 creators. Dependencies: `scenedetect`, `opencv-python-headless`.

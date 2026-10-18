@@ -51,7 +51,7 @@ class VideoAttributes(TypedDict):
     tone: str
 
 
-DEFAULT_ATTRIBUTES: VideoAttributes = {"topic": [], "style": "interview", "tone": "serious"}
+DEFAULT_ATTRIBUTES: VideoAttributes = {"topic": [], "style": "", "tone": ""}
 
 _EMBED_ATTEMPTS = 8
 _EMBED_BACKOFF_SEC = 2.0
@@ -167,11 +167,11 @@ async def analyze_video(video_id: str) -> VideoAttributes:
 
         style = str(attrs.get("style", "")).lower()
         if style not in VALID_STYLES:
-            style = "interview"
+            style = ""
 
         tone = str(attrs.get("tone", "")).lower()
         if tone not in VALID_TONES:
-            tone = "serious"
+            tone = ""
 
         return {"topic": topic, "style": style, "tone": tone}
 

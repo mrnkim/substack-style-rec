@@ -14,9 +14,9 @@ const TIPS: Record<string, string> = {
   pixeltable:
     "Multimodal backend. Stores the videos next to their embeddings and tags, calls TwelveLabs on insert, and runs similarity search.",
   store:
-    "Insert videos and creators as rows. Video is a column type, not a file path, so media and structured data live together in one table.",
+    "Insert videos and creators as rows. Native video columns associate source media with its structured metadata.",
   transform:
-    "Computed columns that run user-defined functions (UDFs) and call external APIs on insert. Only new rows are computed.",
+    "Computed columns run scene detection and call TwelveLabs on insert. Pixeltable computes new rows and maintains their scene index incrementally.",
   query:
     "Similarity search via .similarity() and filtering. Uses pgvector under the hood.",
   TwelveLabs:

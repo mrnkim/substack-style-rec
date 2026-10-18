@@ -300,10 +300,10 @@ export default function HowItWorksPage() {
                   </h3>
                 </div>
                 <p className="text-sm text-[var(--text-secondary)] leading-relaxed mb-3">
-                  Without Pixeltable, this app would need storage for the scene clips, a
-                  vector database for the embeddings, a job runner to call TwelveLabs,
-                  and glue code to keep them in sync. With Pixeltable, adding a video is
-                  one insert, and the embeddings and tags follow.
+                  Pixeltable stores the scene clips, embeddings, and video metadata
+                  together. Its computed columns call TwelveLabs when a video is
+                  inserted, so this app needs no separate vector database or job
+                  orchestrator.
                 </p>
                 <p className="text-sm text-[var(--text-secondary)] leading-relaxed">
                   Pixeltable is an open source multimodal backend for Python, from the
@@ -366,15 +366,16 @@ export default function HowItWorksPage() {
                 API and stores the video&apos;s topic, style, and tone in the same row.
                 It also splits the video into scenes and gets a Marengo 3.0 embedding
                 for each scene. Pixeltable keeps the scene index up to date as videos
-                are added or removed. It embeds only the new scenes, so the index is
-                never rebuilt.
+                are added or removed. Normal inserts and deletes update the index
+                incrementally, without rebuilding the whole catalog.
               </StepCard>
               <StepCard number={3} title="Answer queries" when="Each request">
                 The API asks Pixeltable for similar scenes. For a search, Pixeltable
                 gets a Marengo embedding for the query and runs a similarity search
                 against the scene index. For recommendations, it searches with the
-                stored embeddings of scenes you&apos;ve watched, so no TwelveLabs call
-                is made.
+                stored embeddings of scenes you&apos;ve watched. This path makes no
+                TwelveLabs call; text and title fallbacks call Marengo when scene
+                vectors or candidates are unavailable.
               </StepCard>
               <StepCard number={4} title="Rank and explain" when="Each request" last>
                 The API takes the similar scenes from Pixeltable and keeps a mix of
@@ -433,8 +434,9 @@ export default function HowItWorksPage() {
                 <ul className="text-xs text-[var(--text-secondary)] leading-relaxed space-y-1.5">
                   <li>Exposes the video, creator, search, and recommendation endpoints</li>
                   <li>
-                    Fills 70% of recommendations from creators you subscribe to and 30%
-                    from new creators
+                    Targets 70% from subscribed creators and 30% discovery when watch
+                    history and enough candidates are available, with at most two
+                    results per creator
                   </li>
                   <li>Fills in the &ldquo;Because you watched&hellip;&rdquo; line from a template</li>
                 </ul>
@@ -481,13 +483,12 @@ export default function HowItWorksPage() {
               heading="What runs in Pixeltable and what calls TwelveLabs"
             />
             <p className="text-sm text-[var(--text-secondary)] mb-6 max-w-2xl">
-              When you add a video, it gets one Analyze call, one Marengo embedding for
-              its title, and one Marengo embedding for each scene clip. Each search
-              makes one more call, to embed the search text or the uploaded image,
-              video, or audio file. Recommendations use the scene
-              embeddings already stored in Pixeltable, so they make no TwelveLabs
-              calls. When you add a video, Pixeltable only computes the new rows, so
-              you pay for one video of TwelveLabs work, not the whole catalog.
+              On insert, Pixeltable calls Analyze for the video&apos;s tags and Marengo
+              for its title and scene embeddings. Search embeds a new text, image,
+              video, or audio query through TwelveLabs. Recommendations normally reuse
+              the stored scene vectors; their text and title fallbacks also call
+              Marengo. New inserts compute the new rows rather than re-embedding the
+              whole catalog. If Analyze fails, tags are left unknown.
             </p>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               <div className="p-5 rounded-[var(--radius-lg)] border border-[var(--border-default)] bg-[var(--bg-card)]">
@@ -509,11 +510,12 @@ export default function HowItWorksPage() {
                   At search · live
                 </div>
                 <div className="text-sm text-[var(--text-primary)] font-semibold mb-2">
-                  One API call per search
+                  Query-time embedding
                 </div>
                 <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
-                  Marengo turns your search text into an embedding. Pixeltable compares
-                  that embedding with the stored scene embeddings.
+                  TwelveLabs embeds each uncached query. Pixeltable compares it with
+                  the stored scene embeddings. Uploads, retries, or a title fallback
+                  can require additional API requests.
                 </p>
               </div>
               <div className="p-5 rounded-[var(--radius-lg)] border border-[var(--border-default)] bg-[var(--bg-card)]">
@@ -521,12 +523,13 @@ export default function HowItWorksPage() {
                   For recommendations · live
                 </div>
                 <div className="text-sm text-[var(--text-primary)] font-semibold mb-2">
-                  No TwelveLabs calls
+                  Stored vectors first
                 </div>
                 <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
                   The home, watch, and creator pages take the stored embeddings of a few
                   scenes from videos you&apos;ve watched. Pixeltable compares them with
-                  the scene index. Nothing is uploaded when a page loads.
+                  the scene index without re-uploading those clips. Text and title
+                  fallbacks call TwelveLabs if this path cannot supply candidates.
                 </p>
               </div>
             </div>
@@ -550,7 +553,7 @@ export default function HowItWorksPage() {
                 label="Schema as code"
                 path="backend/app.py"
                 code={schemaSnippet}
-                caption="Each class is a table. Lines with an equals sign are computed columns, which Pixeltable fills in for each new row. Here they get the topic, style, and tone from the Analyze API, and the scene cut times."
+                caption="The class declares a table. Stored columns hold the input data; computed expressions call Analyze for topic, style, and tone, and detect scene cut times when rows are inserted."
               />
               <CodeBlock
                 label="Embedding each scene"
@@ -562,7 +565,7 @@ export default function HowItWorksPage() {
                 label="Search and recommendations"
                 path="backend/routers/"
                 code={similaritySnippet}
-                caption="Similarity queries on the scene index. A text search sends the query to Marengo. A recommendation uses an embedding that's already stored, so it makes no TwelveLabs call."
+                caption="A text search sends the query to Marengo. A recommendation can reuse a stored vector with no TwelveLabs call; text and title fallbacks still call the provider."
               />
             </div>
           </section>

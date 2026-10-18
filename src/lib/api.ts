@@ -52,11 +52,20 @@ export async function getVideos(opts?: {
       const params = new URLSearchParams();
       if (opts?.category) params.set("category", opts.category);
       if (opts?.creatorId) params.set("creator_id", opts.creatorId);
-      const qs = params.toString();
-      const res = await fetch(`${API_BASE}/videos${qs ? `?${qs}` : ""}`);
-      if (!res.ok) return [];
-      const data = await res.json();
-      return dedupeById((data.data ?? []) as Video[]);
+      const videos: Video[] = [];
+      let page = 1;
+      let totalPages = 1;
+      do {
+        params.set("page", String(page));
+        const res = await fetch(`${API_BASE}/videos?${params}`);
+        if (!res.ok) return [];
+        const data = await res.json();
+        videos.push(...((data.data ?? []) as Video[]));
+        // The Next.js fallback returns the whole catalog without pagination metadata.
+        totalPages = data.total_pages ?? 1;
+        page++;
+      } while (page <= totalPages);
+      return dedupeById(videos);
     } catch {
       return [];
     }

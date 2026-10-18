@@ -1,6 +1,6 @@
 # Substack TV-Style Video Recommendation Engine
 
-A production-ready demo of Netflix-style video discovery for creator platforms, powered by [Twelve Labs](https://www.twelvelabs.io/) multimodal video understanding and [Pixeltable](https://www.pixeltable.com/) multimodal backend.
+A demo of Netflix-style video discovery for creator platforms, powered by [Twelve Labs](https://www.twelvelabs.io/) multimodal video understanding and [Pixeltable](https://www.pixeltable.com/) multimodal backend.
 
 **[Read the tutorial: Building Cross-Modal Video Search with TwelveLabs and Pixeltable](https://www.twelvelabs.io/blog/twelve-labs-and-pixeltable)**
 
@@ -11,7 +11,7 @@ Creator platforms like Substack TV, UScreen, and Kajabi need recommendation engi
 - **Semantic recommendations** -- "How to legislate AI" surfaces "Are We Really Ready for AI Coding?" (score: 0.64) across different creators, without shared tags
 - **Explainable suggestions** -- "Because you watched 'How to legislate AI' -- Similar interview format, Matching serious tone, Discover a new creator"
 - **Cross-creator discovery** -- Search "music culture" returns Vox Earworm videos about jazz, Stravinsky, and fade-outs -- semantic understanding, not keyword matching
-- **70/30 subscription/discovery balance** -- Familiar content from creators you follow, blended with algorithmically-surfaced new voices
+- **70/30 subscription/discovery target** -- With watch history and enough candidates, blend 70% subscribed content with 30% discovery, capped at two results per creator. If one pool runs short, fill from the other.
 
 ## How it works
 
@@ -50,20 +50,20 @@ Two integration patterns, one data plane — see [Integration patterns](#integra
 
 - **Declarative schema** -- Tables, computed columns, and embedding indexes are Python classes in `backend/app.py`, applied with `pxt schema update`.
 - **Automatic pipelines** -- INSERT a video row and embeddings + attribute extraction run automatically as computed columns. No orchestration code.
-- **Incremental index** -- Pixeltable embeds and indexes only new scenes on insert, and drops them on delete. The index is never rebuilt.
+- **Incremental index** -- Pixeltable embeds and indexes new scenes on insert, and drops them on delete. Ordinary inserts and deletes do not require rebuilding the whole index.
 - **Scene clips** -- Scene cut times are a computed column on each video. The `VideoScenes` view splits the video at those times with `video_splitter(mode='fast')` (stream copy, no re-encoding). Each clip gets its own Marengo 3.0 embedding.
-- **`.similarity()` API** -- One-line cross-modal search: `video_scenes.video_segment.similarity(string="AI technology")` finds videos by actual scene content. Recommendations go a step further and reuse the *stored* scene vectors — `.similarity(vector=video_segment.embedding())` — for true video-to-video matching with **no re-embedding at query time** (each scene was already embedded at setup). Powered by pgvector under the hood.
+- **`.similarity()` API** -- One-line cross-modal search: `video_scenes.video_segment.similarity(string="AI technology")` finds videos by actual scene content. Recommendations normally reuse the *stored* scene vectors — `.similarity(vector=video_segment.embedding())` — without re-embedding the query. Text and title fallbacks call Twelve Labs when scene vectors or candidates are unavailable. Powered by pgvector under the hood.
 - **`pxt.Video` column** -- Store video files directly in the table. Cut times and embeddings run automatically as computed columns on insert.
 
 See the [Pixeltable + Twelve Labs integration docs](https://docs.pixeltable.com/sdk/latest/twelvelabs) for the full API reference.
 
-### Why Twelve Labs Marengo 3.0
+### Why Twelve Labs
 
 [Marengo 3.0](https://www.twelvelabs.io/product/embed) creates a unified semantic space where text, images, audio, and video can all be used interchangeably as search queries:
 
 - **512-dimensional embeddings** that capture visual content, speech, audio, and on-screen text
 - **Cross-modal search** -- query with text, get back video segments ranked by actual content similarity
-- **Analyze API** -- structured attribute extraction (topic, style, tone) from video content for explainable recommendations
+- **Pegasus 1.5 via the Analyze API** -- structured attribute extraction (topic, style, tone) from video content for explainable recommendations
 
 ### Integration patterns
 
@@ -71,10 +71,10 @@ This backend deliberately uses both of Pixeltable's interop modes against the sa
 
 | Pattern | Used for | Where it lives | What it looks like |
 |---|---|---|---|
-| **Pixeltable integration** (declarative) | Embed API v2 (Marengo 3.0) | `backend/app.py` | `marengo = pxtf.twelvelabs.embed.using(model_name="marengo3.0")`, then `pxt.EmbeddingIndex(title, string_embed=marengo)` in `__indexes__`. Video clips go through `embed_video_retry` in `functions.py`. Pixeltable handles auth, batching, retries, and rerunning on new rows. |
-| **Bring-your-own API** (direct HTTP, wrapped as a UDF) | Analyze API | `backend/functions.py` | `@pxt.udf def analyze_video(...)` calls `https://api.twelvelabs.io/v1.3/analyze` with `httpx` and returns a dict. Pixeltable still schedules it as a computed column so the output (topic / style / tone) is cached on the row. |
+| **Pixeltable integration** (declarative) | Embed API v2 (Marengo 3.0) | `backend/app.py` | `marengo = pxtf.twelvelabs.embed.using(model_name="marengo3.0")`, then `pxt.EmbeddingIndex(title, string_embed=marengo)` in `__indexes__`. Pixeltable schedules computation and stores the vectors. Scene clips use the custom `embed_video_retry` UDF to retry Twelve Labs `asset_not_ready` responses. |
+| **Bring-your-own API** (direct HTTP, wrapped as a UDF) | Analyze API (Pegasus 1.5) | `backend/functions.py` | `@pxt.udf(is_deterministic=False) async def analyze_video(...)` calls `https://api.twelvelabs.io/v1.3/analyze` with an asset ID and returns a `VideoAttributes` TypedDict. Pixeltable stores the topic, style, and tone as computed columns. Failed calls leave tags unknown rather than inventing attributes. |
 
-**Why the split is not just cosmetic.** Pixeltable ships a first-class [Twelve Labs integration](https://docs.pixeltable.com/sdk/latest/twelvelabs) for the Embed API, so we use it — one line replaces dozens of lines of batching, retry, and vector-persistence code. The Analyze API does not have a Pixeltable helper yet (it's tied to the per-video index abstraction, not a stateless model call), so we drop down to raw HTTP and wrap it in a UDF. Either way the result is a computed column: if you INSERT a new video, both the embedding index *and* `raw_attributes` recompute automatically, regardless of which pattern produced them.
+Pixeltable's [Twelve Labs integration](https://docs.pixeltable.com/sdk/latest/twelvelabs) supplies the Embed function used for text, image, and audio queries. The scene-video UDF adds an upload-readiness retry, and the Analyze UDF calls Pegasus 1.5 over HTTP. Twelve Labs produces the vectors and tags; Pixeltable schedules these computations, stores their results, maintains the scene index, and runs similarity queries. FastAPI applies the subscription mix, creator diversity, and explanation templates.
 
 This is the thing to steal from this repo if you're evaluating Pixeltable: integrations give you the fast path for anything supported, and the `@pxt.udf` escape hatch covers the rest without abandoning the declarative model.
 
@@ -189,7 +189,7 @@ Pixeltable is **stateful**. It runs an embedded Postgres (`pixeltable_pgserver`)
 
 Verify:
 ```bash
-curl https://substack-rec-api.onrender.com/api/videos | jq '.data | length'   # → 25
+curl 'https://substack-rec-api.onrender.com/api/videos?limit=100' | jq '.data | length'   # → 25 after --full
 ```
 
 ### 2. Frontend → Vercel
@@ -221,7 +221,7 @@ The disk-vs-no-disk decision is what you're choosing. Everything else is plumbin
 
 | Feature | Endpoint | How it works |
 |---|---|---|
-| **Personalized "For You"** | `POST /recommendations/for-you` | Marengo `.similarity(vector=...)` reusing each watched video's precomputed scene vectors (no query-time re-embed), 70% subscription / 30% discovery, max 2 per creator |
+| **Personalized "For You"** | `POST /recommendations/for-you` | Stored Marengo scene vectors first, then provider-backed text/title fallbacks; 70/30 subscription/discovery target when candidates permit, max 2 per creator |
 | **Similar Videos** | `POST /recommendations/similar` | Sidebar recs from the current video's precomputed scene vectors — true video-to-video via `.similarity(vector=...)` |
 | **Creator Catalog** | `POST /recommendations/creator-catalog` | Relevance-sorted (not recency) with `{ recommended, popular }` |
 | **Semantic Search** | `GET /search?q=` | Text-to-video via scene embeddings `.similarity(string=q)` |
