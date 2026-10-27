@@ -87,6 +87,44 @@ class RecommendationRulesTest(unittest.TestCase):
         )
 
 
+class SceneVectorFallbackTest(unittest.TestCase):
+    def query(self, vector_rows, text_rows):
+        title_rows = [video("title-result", "creator", 0.7)]
+        with (
+            patch.object(recommendations, "_get_scenes_table", return_value=object()),
+            patch.object(recommendations, "_get_ref_scene_vectors", return_value=[[0.0] * 512]),
+            patch.object(recommendations, "_scene_similarity", side_effect=[vector_rows, text_rows]) as scene,
+            patch.object(recommendations, "_title_similarity", return_value=title_rows) as title,
+        ):
+            result = recommendations._similarity_candidates(
+                object(), video("seed", "seed-creator"), {"watched"}, 5
+            )
+        self.assertEqual(scene.call_args_list[0].args[1], {"seed", "watched"})
+        self.assertIn("vector", scene.call_args_list[0].kwargs)
+        return result, scene, title
+
+    def test_zero_vector_scores_fall_back_to_text(self):
+        text_rows = [video("text-result", "creator", 0.8)]
+        result, scene, title = self.query([video("zero", "creator", 0.0)], text_rows)
+        self.assertEqual(result, text_rows)
+        self.assertEqual(scene.call_count, 2)
+        self.assertIn("string", scene.call_args.kwargs)
+        title.assert_not_called()
+
+    def test_missing_and_negative_vector_scores_fall_back_to_title(self):
+        rows = [video("null", "creator") | {"score": None}, video("negative", "creator", -0.1)]
+        result, _, title = self.query(rows, [video("zero", "creator", 0.0)])
+        self.assertEqual(result[0]["id"], "title-result")
+        title.assert_called_once()
+
+    def test_positive_vectors_keep_video_path_and_exclude_zero_scores(self):
+        positive = video("positive", "creator", 0.9)
+        result, scene, title = self.query([video("zero", "creator", 0.0), positive], [])
+        self.assertEqual(result, [positive])
+        self.assertEqual(scene.call_count, 1)
+        title.assert_not_called()
+
+
 class AnalyzeAttributesTest(unittest.IsolatedAsyncioTestCase):
     async def test_provider_failure_does_not_invent_attributes(self) -> None:
         with (
