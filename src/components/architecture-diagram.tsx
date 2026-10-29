@@ -6,23 +6,23 @@ import { ReactNode } from "react";
 
 const TIPS: Record<string, string> = {
   "Next.js":
-    "React framework powering the video discovery UI, with server-side rendering and API routes.",
+    "React framework powering the video discovery user interface (UI), with server-side rendering and API routes.",
   "client library":
     "Fetch helpers that call the FastAPI backend for videos, recommendations, and search.",
   FastAPI:
-    "Python web server exposing REST endpoints. Route handlers call Pixeltable directly to store, transform, and query multimodal data.",
+    "Python web server exposing representational state transfer (REST) endpoints over HTTP (Hypertext Transfer Protocol). Route handlers call Pixeltable directly to store, transform, and query multimodal data.",
   pixeltable:
-    "Declarative multimodal backend with tables, computed columns, embedding indexes, and similarity search built in.",
+    "Multimodal backend. Stores the videos next to their embeddings and tags, calls TwelveLabs on insert, and runs similarity search.",
   store:
-    "Insert videos and creators as rows. Media files and structured data live together in one table.",
+    "Insert videos and creators as rows. Native video columns associate source media with its structured metadata.",
   transform:
-    "Computed columns that run UDFs and call external APIs automatically on insert.",
+    "Computed columns run scene detection and call TwelveLabs on insert. Pixeltable computes new rows and maintains their scene index incrementally.",
   query:
     "Similarity search via .similarity() and filtering. Uses pgvector under the hood.",
-  "Twelve Labs":
-    "Multimodal video understanding API. Pixeltable's Twelve Labs integration handles auth, batching, retries, and stores vectors as computed columns automatically.",
+  TwelveLabs:
+    "Queries use Pixeltable's built-in Marengo embed. Analyze and scene video embeds are custom user-defined functions (UDFs) in functions.py. Analyze results are a computed column, and the scene embedding is the embedding index's embedding function.",
   embed:
-    "Embed API v2 with Marengo 3.0. Returns 512-dim vectors that capture the visual content of each scene.",
+    "Embed API v2 with Marengo 3.0. Stores one 512-dimension vector for each scene clip.",
   analyze:
     "Analyze API extracting structured attributes: topic, style, and tone from video content.",
 };
@@ -31,7 +31,7 @@ const TIPS: Record<string, string> = {
 
 type IconProps = { className?: string };
 
-function MonitorIcon({ className }: IconProps) {
+export function MonitorIcon({ className }: IconProps) {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden>
       <rect width="20" height="14" x="2" y="3" rx="2" />
@@ -41,7 +41,7 @@ function MonitorIcon({ className }: IconProps) {
   );
 }
 
-function ServerIcon({ className }: IconProps) {
+export function ServerIcon({ className }: IconProps) {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden>
       <rect width="20" height="8" x="2" y="2" rx="2" />
@@ -81,20 +81,69 @@ function SearchIcon({ className }: IconProps) {
   );
 }
 
-function WorkflowIcon({ className }: IconProps) {
+export function GithubIcon({ className }: IconProps) {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden>
-      <rect width="8" height="8" x="3" y="3" rx="2" />
-      <path d="M7 11v4a2 2 0 0 0 2 2h4" />
-      <rect width="8" height="8" x="13" y="13" rx="2" />
+      <path d="M15 22v-4a4.8 4.8 0 0 0-1-3.5c3 0 6-2 6-5.5.08-1.25-.27-2.48-1-3.5.28-1.15.28-2.35 0-3.5 0 0-1 0-3 1.5-2.64-.5-5.36-.5-8 0C6 2 5 2 5 2c-.3 1.15-.3 2.35 0 3.5A5.403 5.403 0 0 0 4 9c0 3.5 3 5.5 6 5.5-.39.49-.68 1.05-.85 1.65-.17.6-.22 1.23-.15 1.85v4" />
+      <path d="M9 18c-4.51 2-5-2-7-2" />
     </svg>
   );
 }
 
-function ZapIcon({ className }: IconProps) {
+// Bars traced from the TwelveLabs app icon, as [x, y, width] in a 180px grid.
+const TWELVELABS_BARS: [number, number, number][] = [
+  [105, 32, 8],
+  [96, 42, 14], [142, 42, 6],
+  [87, 52, 23], [115, 52, 6], [134, 52, 24],
+  [53, 62, 23], [112, 62, 27], [143, 62, 21],
+  [9, 72, 28], [44, 72, 50], [108, 72, 31], [158, 72, 13],
+  [33, 82, 65], [108, 82, 25],
+  [44, 92, 82],
+  [31, 101, 31], [92, 101, 25],
+  [41, 111, 10], [59, 111, 10], [95, 111, 10], [113, 111, 9],
+  [51, 121, 7], [68, 121, 12], [90, 121, 8], [102, 121, 22],
+  [84, 131, 7],
+  [77, 141, 7],
+];
+
+export function TwelveLabsLogo({ className }: IconProps) {
   return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden>
-      <path d="M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z" />
+    <svg viewBox="5 5 170 170" fill="currentColor" className={className} aria-hidden>
+      {TWELVELABS_BARS.map(([x, y, w]) => (
+        <rect key={`${x}-${y}`} x={x} y={y} width={w} height={6} />
+      ))}
+    </svg>
+  );
+}
+
+// Cells of the "P" in the Pixeltable mark's 7x7 grid, as [row, column].
+const PIXELTABLE_DOTS = new Set([
+  "0-1", "0-2", "0-3", "0-4",
+  "1-1", "1-5",
+  "2-1", "2-5",
+  "3-1", "3-2", "3-3", "3-4",
+  "4-1", "5-1", "6-1",
+]);
+
+export function PixeltableLogo({ className }: IconProps) {
+  const cells = [];
+  for (let row = 0; row < 7; row++) {
+    for (let col = 0; col < 7; col++) {
+      const cx = 70 + col * 51;
+      const cy = 83 + row * 51;
+      cells.push(
+        PIXELTABLE_DOTS.has(`${row}-${col}`) ? (
+          <circle key={`${row}-${col}`} cx={cx} cy={cy} r={19} />
+        ) : (
+          <rect key={`${row}-${col}`} x={cx - 19} y={cy - 19} width={38} height={38} opacity={0.3} />
+        ),
+      );
+    }
+  }
+  return (
+    <svg viewBox="0 0 446 477" fill="currentColor" className={className} aria-hidden>
+      <rect x="7.5" y="7.5" width="431" height="462" rx="40" fill="none" stroke="currentColor" strokeWidth="15" />
+      {cells}
     </svg>
   );
 }
@@ -192,7 +241,7 @@ function IntegrationBadge({ text }: { text: string }) {
   return (
     <div className="flex items-center justify-center">
       <span className="inline-flex items-center gap-1 rounded-full border border-[var(--border-accent)] bg-[var(--accent-muted)] px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-[var(--accent)]">
-        <ZapIcon className="w-2.5 h-2.5" />
+        <PixeltableLogo className="w-2.5 h-2.5" />
         {text}
       </span>
     </div>
@@ -306,7 +355,7 @@ export default function ArchitectureDiagram() {
             <PixeltableBox>
               <Hover tip={TIPS.pixeltable}>
                 <div className="mb-3 flex items-center justify-center gap-1.5">
-                  <ZapIcon className="w-3.5 h-3.5 text-[var(--accent)]" />
+                  <PixeltableLogo className="w-3.5 h-3.5 text-[var(--accent)]" />
                   <span className="text-xs font-semibold text-[var(--text-primary)]">
                     pixeltable
                   </span>
@@ -321,7 +370,7 @@ export default function ArchitectureDiagram() {
                   <div className="flex flex-col items-center justify-center rounded-md border border-[var(--border-default)] bg-[var(--bg-card)] p-2.5 text-center">
                     <DatabaseIcon className="mb-1 w-3.5 h-3.5 text-[var(--text-secondary)]" />
                     <span className="text-[11px] font-semibold text-[var(--text-primary)]">
-                      store
+                      database
                     </span>
                     <span className="mt-0.5 text-[10px] leading-snug text-[var(--text-tertiary)]">
                       tables &amp; views
@@ -332,10 +381,10 @@ export default function ArchitectureDiagram() {
                   <div className="flex flex-col items-center justify-center rounded-md border border-[var(--border-default)] bg-[var(--bg-card)] p-2.5 text-center">
                     <CpuIcon className="mb-1 w-3.5 h-3.5 text-[var(--text-secondary)]" />
                     <span className="text-[11px] font-semibold text-[var(--text-primary)]">
-                      transform
+                      AI steps
                     </span>
                     <span className="mt-0.5 text-[10px] leading-snug text-[var(--text-tertiary)]">
-                      UDFs · built-ins · AI integrations
+                      computed columns
                     </span>
                   </div>
                 </Hover>
@@ -359,10 +408,10 @@ export default function ArchitectureDiagram() {
           {/* RIGHT: external */}
           <Zone title="external" className="flex-1">
             <DiagNode
-              label="Twelve Labs"
+              label="TwelveLabs"
               sub="video embeddings"
-              icon={WorkflowIcon}
-              tip={TIPS["Twelve Labs"]}
+              icon={TwelveLabsLogo}
+              tip={TIPS.TwelveLabs}
             >
               <div className="mt-1 flex items-center justify-center gap-1.5">
                 <Pill label="embed" />
@@ -373,8 +422,9 @@ export default function ArchitectureDiagram() {
             <IntegrationBadge text="pixeltable integration" />
 
             <div className="text-center text-[10px] leading-snug text-[var(--text-tertiary)]">
-              Pixeltable handles auth, batching, retries, and stores results as
-              computed columns
+              Queries use the built-in Marengo embed. Analyze and scene video
+              embeds are custom user-defined functions (UDFs). Analyze results are a
+              computed column, and scene embeds run inside the embedding index.
             </div>
           </Zone>
         </div>

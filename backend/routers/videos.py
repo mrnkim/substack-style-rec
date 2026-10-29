@@ -2,7 +2,8 @@
 
 Also exports shared helpers used by other routers:
     VIDEO_FIELDS, _select_videos, _attach_attrs, _build_video_response,
-    _load_creators_map, _get_scenes_table, _scene_similarity, _title_similarity
+    _load_creators_map, _get_scenes_table, _scene_similarity, _title_similarity,
+    _has_similarity_signal
 """
 
 import logging
@@ -21,6 +22,17 @@ from models import (
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api", tags=["videos"])
+
+
+def _has_similarity_signal(rows: list[dict]) -> bool:
+    """True when at least one row has a positive similarity score.
+
+    Scene queries can still return rows when the embedding index is empty
+    (null vectors compare as 0.0). Treat that as 'no signal' so callers
+    can fall back to the title index.
+    """
+    return any((row.get("score") or 0) > 0 for row in rows)
+
 
 VIDEO_FIELDS = (
     "id",

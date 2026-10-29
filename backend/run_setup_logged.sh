@@ -7,8 +7,8 @@
 #        Setup only (idempotent creates where supported).
 #
 #   2) ./run_setup_logged.sh --drop-dir
-#        pxt.drop_dir(APP_NAMESPACE) — removes ONLY this app’s directory (e.g. substack_rec).
-#        Safe for “redo this project” without touching other Pixeltable work.
+#        pxt.drop_dir(APP_NAMESPACE) — removes ONLY this app's directory (e.g. substack_rec).
+#        Safe for "redo this project" without touching other Pixeltable work.
 #
 #   3) rm -rf "$PIXELTABLE_HOME/pgdata" OR rm -rf "$PIXELTABLE_HOME"
 #        NOT scoped to one project: embedded Postgres + metadata for that entire home are gone.
@@ -35,12 +35,12 @@ log "Log file: $(pwd)/$LOG"
 log "Started (UTC): $(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
 DROP_DIR=0
-SETUP_ARGS=()
+LOAD_ARGS=()
 for a in "$@"; do
   if [[ "$a" == "--drop-dir" ]]; then
     DROP_DIR=1
   else
-    SETUP_ARGS+=("$a")
+    LOAD_ARGS+=("$a")
   fi
 done
 
@@ -54,21 +54,34 @@ print('drop_dir OK:', config.APP_NAMESPACE)
 " 2>&1 | tee -a "$LOG"
 fi
 
-if [[ ${#SETUP_ARGS[@]} -eq 0 ]]; then
-  log "--- setup_pixeltable.py ---"
+log "--- pxt schema update (create/update schema) ---"
+set +e
+uv run pxt schema update app.py substack_rec 2>&1 | tee -a "$LOG"
+schema_rc=${PIPESTATUS[0]}
+set -e
+
+if [[ "$schema_rc" -ne 0 ]]; then
+  log "ERROR: pxt schema update exited with code $schema_rc"
+  log "PostgreSQL log (if present): tail -80 \"\${PIXELTABLE_HOME:-\$HOME/.pixeltable}/pgdata/log\"/* 2>/dev/null || true"
+  log "Full log: $(pwd)/$LOG"
+  exit "$schema_rc"
+fi
+
+if [[ ${#LOAD_ARGS[@]} -eq 0 ]]; then
+  log "--- load.py ---"
   set +e
-  uv run setup_pixeltable.py 2>&1 | tee -a "$LOG"
+  uv run load.py 2>&1 | tee -a "$LOG"
 else
-  log "--- setup_pixeltable.py ${SETUP_ARGS[*]} ---"
+  log "--- load.py ${LOAD_ARGS[*]} ---"
   set +e
-  uv run setup_pixeltable.py "${SETUP_ARGS[@]}" 2>&1 | tee -a "$LOG"
+  uv run load.py "${LOAD_ARGS[@]}" 2>&1 | tee -a "$LOG"
 fi
 rc=${PIPESTATUS[0]}
 set -e
 
 log "Finished (UTC): $(date -u +%Y-%m-%dT%H:%M:%SZ)"
 if [[ "$rc" -ne 0 ]]; then
-  log "ERROR: setup_pixeltable.py exited with code $rc"
+  log "ERROR: load.py exited with code $rc"
   log "PostgreSQL log (if present): tail -80 \"\${PIXELTABLE_HOME:-\$HOME/.pixeltable}/pgdata/log\"/* 2>/dev/null || true"
 fi
 log "Full log: $(pwd)/$LOG"

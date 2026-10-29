@@ -54,7 +54,7 @@ export default function ExplorePage() {
         </h1>
         <p className="text-sm text-[var(--text-secondary)] mt-2 max-w-lg">
           Discover new creators and content beyond your subscriptions.
-          Recommendations powered by TwelveLabs semantic understanding.
+          Pixeltable stores the catalog; TwelveLabs supplies video embeddings and tags.
         </p>
       </div>
 

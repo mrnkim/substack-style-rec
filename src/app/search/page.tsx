@@ -343,7 +343,7 @@ function SearchResults() {
               </h3>
               <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
                 Upload an image, short video clip, or audio file to find videos with matching content.
-                Powered by Twelve Labs Marengo 3.0 + Pixeltable scene detection — all modalities share the same embedding space.
+                Powered by TwelveLabs Marengo 3.0 and Pixeltable. Marengo puts text, images, video, and audio in one embedding space, so any of them can be a query. Pixeltable stores the scene embeddings and runs the similarity queries.
               </p>
             </div>
 

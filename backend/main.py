@@ -28,7 +28,7 @@ async def lifespan(app: FastAPI):
     except Exception:
         logger.warning(
             "Pixeltable schema not initialized. "
-            "Run 'uv run setup_pixeltable.py' first. "
+            "Run 'pxt schema update app.py substack_rec && uv run load.py' first. "
             "The server will start but API calls will fail."
         )
     yield
@@ -62,7 +62,7 @@ def health() -> dict[str, str]:
 
     Deliberately does not touch Pixeltable: we want this endpoint to return
     200 as soon as the process is up, even on a fresh disk where
-    `setup_pixeltable.py` has not been run yet. Data-plane readiness is
+    schema/data has not been loaded yet. Data-plane readiness is
     observable via `/api/videos` returning a non-empty list.
     """
     return {"status": "ok"}

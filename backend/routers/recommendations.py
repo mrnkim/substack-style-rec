@@ -28,6 +28,7 @@ from routers.videos import (
     _build_video_response,
     _get_scenes_table,
     _load_creators_map,
+    _has_similarity_signal,
     _scene_similarity,
     _select_videos,
     _title_similarity,
@@ -54,7 +55,7 @@ def _apply_diversity(candidates: list[dict], max_per_creator: int = 2) -> list[d
 def _get_ref_scene_vectors(scenes_t, video_id: str, max_segments: int = MAX_SCENE_QUERIES) -> list:
     """Get representative scene embedding vectors for a video.
 
-    Reads the Marengo vectors stored in the scene_marengo embedding index via
+    Reads the Marengo vectors stored in the video_segment embedding index via
     video_segment.embedding() and samples evenly-spaced scenes. Querying with these
     stored vectors avoids re-uploading/re-embedding clips to Twelve Labs at query
     time — the scene was already embedded at setup, so we reuse that vector.
@@ -62,7 +63,7 @@ def _get_ref_scene_vectors(scenes_t, video_id: str, max_segments: int = MAX_SCEN
     try:
         rows = list(
             scenes_t.where(scenes_t.id == video_id)
-            .select(vec=scenes_t.video_segment.embedding(idx="scene_marengo"))
+            .select(vec=scenes_t.video_segment.embedding())
             .collect()
         )
     except Exception:
@@ -124,8 +125,11 @@ def _similarity_candidates(
                         vector=vec,
                     )
                     for r in rows:
+                        score = r.get("score") or 0.0
+                        if score <= 0:
+                            continue
                         vid = r["id"]
-                        if vid not in all_candidates or (r.get("score", 0) > all_candidates[vid].get("score", 0)):
+                        if vid not in all_candidates or score > (all_candidates[vid].get("score") or 0.0):
                             all_candidates[vid] = r
 
                 if all_candidates:
@@ -146,7 +150,7 @@ def _similarity_candidates(
         text_query = _build_text_query(ref)
         try:
             rows = _scene_similarity(scenes_t, exclude_ids | {ref_id}, limit, creator_id, string=text_query)
-            if rows:
+            if _has_similarity_signal(rows):
                 logger.info("  [scene index] query=text '%s'", text_query[:60])
                 return rows
         except Exception as exc:
