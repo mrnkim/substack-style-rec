@@ -125,8 +125,11 @@ def _similarity_candidates(
                         vector=vec,
                     )
                     for r in rows:
+                        score = r.get("score") or 0.0
+                        if score <= 0:
+                            continue
                         vid = r["id"]
-                        if vid not in all_candidates or (r.get("score", 0) > all_candidates[vid].get("score", 0)):
+                        if vid not in all_candidates or score > (all_candidates[vid].get("score") or 0.0):
                             all_candidates[vid] = r
 
                 if all_candidates:

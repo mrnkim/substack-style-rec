@@ -165,6 +165,26 @@ Pixeltable is **stateful**. It runs an embedded Postgres (`pixeltable_pgserver`)
 
 ### 1. Backend → Render
 
+**Existing 0.6.x database:** do not run the fresh-install schema/load commands
+below against it. First restore a backup into a separate Pixeltable home and
+test the compatibility migration with the locked dependencies:
+
+```bash
+cd backend
+uv sync --frozen
+uv run migrate_existing.py --home /absolute/path/to/restored-copy
+uv run migrate_existing.py --home /absolute/path/to/restored-copy --apply
+```
+
+Use `app_existing.py` for subsequent schema reconciliation on migrated databases,
+not `app.py`. It preserves the legacy JSON types, B-tree indexes, and named
+Marengo indexes. Only computed-expression metadata is updated; existing rows
+are not recomputed, and missing vectors are not repaired. Opening an old home
+with the new package can itself upgrade Pixeltable metadata, even during a dry
+run. Keep an offline backup of the entire original home (including media) before
+any production upgrade; do not point an older Pixeltable release at an upgraded
+home to roll back. See [the compatibility test and rollout checklist](docs/PR18_UPGRADE_REVIEW.md).
+
 **Files that ship with the repo:**
 
 - [`Dockerfile`](./Dockerfile) — Python 3.13 + ffmpeg + libgl + `uv`, production `uvicorn` launch, `PIXELTABLE_HOME=/var/pixeltable`.
