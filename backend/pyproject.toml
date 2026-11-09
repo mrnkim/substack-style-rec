@@ -4,12 +4,12 @@ version = "0.1.0"
 description = "FastAPI + Pixeltable backend for Substack TV-style video recommendations"
 requires-python = ">=3.11"
 dependencies = [
-    "pixeltable>=0.7.18",
+    "pixeltable>=0.7.24",
     "fastapi",
     "uvicorn[standard]",
     "python-dotenv",
     "python-multipart",
-    "twelvelabs",
+    "twelvelabs>=1.3.6",
     "httpx",
     "yt-dlp",
     "scenedetect>=0.6.7.1",

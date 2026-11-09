@@ -1,20 +1,12 @@
 """Custom UDFs and helper functions for the recommendation engine."""
 
-import asyncio
 import json
 import logging
-import os
 from typing import TypedDict
 
 import httpx
 import numpy as np
 import pixeltable as pxt
-from pixeltable.functions.twelvelabs import (
-    TWELVELABS_INLINE_LIMIT_BYTES,
-    _asset_uploads,
-    _embed_av_content,
-    _twelvelabs_client,
-)
 
 import config
 
@@ -52,24 +44,6 @@ class VideoAttributes(TypedDict):
 
 
 DEFAULT_ATTRIBUTES: VideoAttributes = {"topic": [], "style": "", "tone": ""}
-
-_EMBED_ATTEMPTS = 8
-_EMBED_BACKOFF_SEC = 2.0
-
-
-def _is_asset_not_ready(exc: BaseException) -> bool:
-    chunks = [str(exc)]
-    body = getattr(exc, "body", None)
-    if isinstance(body, dict):
-        chunks.append(str(body.get("code") or ""))
-        chunks.append(str(body.get("message") or ""))
-    elif body is not None:
-        chunks.append(str(getattr(body, "code", "") or ""))
-        chunks.append(str(getattr(body, "message", "") or ""))
-        chunks.append(str(body))
-    blob = " ".join(chunks).lower()
-    return "asset_not_ready" in blob or "being processed" in blob
-
 
 def _parse_analyze_text(resp: httpx.Response) -> str:
     text = resp.text.strip()
@@ -180,64 +154,19 @@ async def analyze_video(video_id: str) -> VideoAttributes:
         return dict(DEFAULT_ATTRIBUTES)
 
 
-async def _create_video_embed(cl, video_req) -> np.ndarray:
-    last_exc: BaseException | None = None
-    for attempt in range(1, _EMBED_ATTEMPTS + 1):
-        try:
-            res = await cl.embed.v_2.create(
-                input_type="video", model_name="marengo3.0", video=video_req
-            )
-            if not res.data:
-                raise RuntimeError(f"Empty embed response: {res}")
-            return np.array(res.data[0].embedding, dtype="float32")
-        except Exception as e:
-            last_exc = e
-            if not _is_asset_not_ready(e) or attempt == _EMBED_ATTEMPTS:
-                raise
-            logger.info(
-                "Video embed asset not ready (attempt %d/%d), retrying in %.1fs: %s",
-                attempt,
-                _EMBED_ATTEMPTS,
-                _EMBED_BACKOFF_SEC,
-                e,
-            )
-            await asyncio.sleep(_EMBED_BACKOFF_SEC)
-    assert last_exc is not None
-    raise last_exc
-
-
-async def _embed_video_marengo(file_path: str) -> np.ndarray:
-    import twelvelabs
-
-    size_bytes = os.stat(file_path).st_size
-    if size_bytes <= TWELVELABS_INLINE_LIMIT_BYTES:
-        vec = await _embed_av_content(
-            file_path=file_path,
-            input_type="video",
-            request_cls=twelvelabs.VideoInputRequest,
-            model_name="marengo3.0",
-            start_sec=None,
-            end_sec=None,
-            embedding_option=None,
-        )
-        if vec is None:
-            raise RuntimeError(f"Didn't receive embedding for video: {file_path}")
-        return np.asarray(vec, dtype="float32")
-
-    cl = _twelvelabs_client()
-    async with _asset_uploads(input_type="video", files=[file_path]) as asset_ids:
-        video_req = twelvelabs.VideoInputRequest(
-            media_source=twelvelabs.MediaSource(asset_id=asset_ids[0])
-        )
-        return await _create_video_embed(cl, video_req)
-
-
-@pxt.udf(is_deterministic=False, resource_pool="request-rate:twelvelabs")
+@pxt.udf(is_deterministic=False)
 async def embed_video_retry(video: pxt.Video) -> pxt.Array[(512,), np.float32] | None:
-    """Marengo 3.0 video embed with retries while Twelve Labs processes a multipart upload."""
-    if not video:
-        return None
-    return await _embed_video_marengo(video)
+    """Retired Marengo 3.0 scene embedding. Do not use.
+
+    Databases created before the Marengo 3.5 upgrade store an index that names this
+    UDF. Pixeltable must be able to import it to load those tables, so that
+    `pxt schema update app.py substack_rec --allow-destructive` can drop the old index
+    and build the 3.5 one. Remove this stub once no such database remains.
+    """
+    raise RuntimeError(
+        "embed_video_retry is retired. Run `pxt schema update app.py substack_rec "
+        "--allow-destructive` to rebuild the scene index with Marengo 3.5."
+    )
 
 
 # ---------------------------------------------------------------------------

@@ -6,7 +6,7 @@ A demo of Netflix-style video discovery for creator platforms, powered by [Twelv
 
 ## What this demonstrates
 
-Creator platforms like Substack TV, UScreen, and Kajabi need recommendation engines that understand *what's actually in a video* -- not just titles and tags. This demo shows how Twelve Labs Marengo 3.0 embeddings and Pixeltable's `.similarity()` API deliver:
+Creator platforms like Substack TV, UScreen, and Kajabi need recommendation engines that understand *what's actually in a video* -- not just titles and tags. This demo shows how Twelve Labs Marengo 3.5 embeddings and Pixeltable's `.similarity()` API deliver:
 
 - **Semantic recommendations** -- "How to legislate AI" surfaces "Are We Really Ready for AI Coding?" (score: 0.64) across different creators, without shared tags
 - **Explainable suggestions** -- "Because you watched 'How to legislate AI' -- Similar interview format, Matching serious tone, Discover a new creator"
@@ -38,7 +38,7 @@ Pixeltable (schema in backend/app.py)
        |
        v
 Twelve Labs API
-  ├── Embed API v2 → Marengo 3.0 multimodal vectors   (via Pixeltable TL integration)
+  ├── Embed API v2 → Marengo 3.5 multimodal vectors   (via Pixeltable TL integration)
   └── Analyze API  → topic, style, tone extraction    (direct HTTP, wrapped as a Pixeltable UDF)
 ```
 
@@ -51,7 +51,7 @@ Two integration patterns, one data plane — see [Integration patterns](#integra
 - **Declarative schema** -- Tables, computed columns, and embedding indexes are Python classes in `backend/app.py`, applied with `pxt schema update`.
 - **Automatic pipelines** -- INSERT a video row and embeddings + attribute extraction run automatically as computed columns. No orchestration code.
 - **Incremental index** -- Pixeltable embeds and indexes new scenes on insert, and drops them on delete. Ordinary inserts and deletes do not require rebuilding the whole index.
-- **Scene clips** -- Scene cut times are a computed column on each video. The `VideoScenes` view splits the video at those times with `video_splitter(mode='fast')` (stream copy, no re-encoding). Each clip gets its own Marengo 3.0 embedding.
+- **Scene clips** -- Scene cut times are a computed column on each video. The `VideoScenes` view splits the video at those times with `video_splitter(mode='fast')` (stream copy, no re-encoding). Each clip gets its own Marengo 3.5 embedding from the Twelve Labs async embedding API.
 - **`.similarity()` API** -- One-line cross-modal search: `video_scenes.video_segment.similarity(string="AI technology")` finds videos by actual scene content. Recommendations normally reuse the *stored* scene vectors — `.similarity(vector=video_segment.embedding())` — without re-embedding the query. Text and title fallbacks call Twelve Labs when scene vectors or candidates are unavailable. Powered by pgvector under the hood.
 - **`pxt.Video` column** -- Store video files directly in the table. Cut times and embeddings run automatically as computed columns on insert.
 
@@ -59,7 +59,7 @@ See the [Pixeltable + Twelve Labs integration docs](https://docs.pixeltable.com/
 
 ### Why Twelve Labs
 
-[Marengo 3.0](https://www.twelvelabs.io/product/embed) creates a unified semantic space where text, images, audio, and video can all be used interchangeably as search queries:
+[Marengo 3.5](https://www.twelvelabs.io/product/embed) creates a unified semantic space where text, images, audio, and video can all be used interchangeably as search queries:
 
 - **512-dimensional embeddings** that capture visual content, speech, audio, and on-screen text
 - **Cross-modal search** -- query with text, get back video segments ranked by actual content similarity
@@ -71,10 +71,10 @@ This backend deliberately uses both of Pixeltable's interop modes against the sa
 
 | Pattern | Used for | Where it lives | What it looks like |
 |---|---|---|---|
-| **Pixeltable integration** (declarative) | Embed API v2 (Marengo 3.0) | `backend/app.py` | `marengo = pxtf.twelvelabs.embed.using(model_name="marengo3.0")`, then `pxt.EmbeddingIndex(title, string_embed=marengo)` in `__indexes__`. Pixeltable schedules computation and stores the vectors. Scene clips use the custom `embed_video_retry` UDF to retry Twelve Labs `asset_not_ready` responses. |
+| **Pixeltable integration** (declarative) | Embed API v2 (Marengo 3.5) | `backend/app.py` | `marengo = pxtf.twelvelabs.embed.using(model_name="marengo3.5")` for text and image queries, `marengo_async = pxtf.twelvelabs.async_embed_asset.using(model_name="marengo3.5")` for scene clips, then `pxt.EmbeddingIndex(video_segment, video_embed=marengo_async, string_embed=marengo, ...)` in `__indexes__`. The synchronous Marengo 3.5 API rejects audio and video over 30 seconds; `async_embed_asset` runs an async embedding task and returns one fused vector per clip of any length. Pixeltable schedules computation and stores the vectors. |
 | **Bring-your-own API** (direct HTTP, wrapped as a UDF) | Analyze API (Pegasus 1.5) | `backend/functions.py` | `@pxt.udf(is_deterministic=False) async def analyze_video(...)` calls `https://api.twelvelabs.io/v1.3/analyze` with an asset ID and returns a `VideoAttributes` TypedDict. Pixeltable stores the topic, style, and tone as computed columns. Failed calls leave tags unknown rather than inventing attributes. |
 
-Pixeltable's [Twelve Labs integration](https://docs.pixeltable.com/sdk/latest/twelvelabs) supplies the Embed function used for text, image, and audio queries. The scene-video UDF adds an upload-readiness retry, and the Analyze UDF calls Pegasus 1.5 over HTTP. Twelve Labs produces the vectors and tags; Pixeltable schedules these computations, stores their results, maintains the scene index, and runs similarity queries. FastAPI applies the subscription mix, creator diversity, and explanation templates.
+Pixeltable's [Twelve Labs integration](https://docs.pixeltable.com/sdk/latest/twelvelabs) supplies both embed functions: `async_embed_asset` for scene clips and video or audio queries, and `embed` for text and image queries. The Analyze UDF calls Pegasus 1.5 over HTTP. Twelve Labs produces the vectors and tags; Pixeltable schedules these computations, stores their results, maintains the scene index, and runs similarity queries. FastAPI applies the subscription mix, creator diversity, and explanation templates.
 
 This is the thing to steal from this repo if you're evaluating Pixeltable: integrations give you the fast path for anything supported, and the `@pxt.udf` escape hatch covers the rest without abandoning the declarative model.
 
@@ -155,6 +155,8 @@ Without this, the browser talks to the Next.js `/api/*` routes instead of FastAP
 
 Quick-start uses 3 short videos for fast iteration (~4 min total setup). Pass `--full` to load all 25 videos with scene detection and Marengo embeddings.
 
+**Upgrading a database built with Marengo 3.0.** Marengo 3.0 and 3.5 vectors are not interchangeable, so the title and scene indexes must be rebuilt. From `backend/`, run `uv run pxt schema update app.py substack_rec --allow-destructive`. It drops the two 3.0 indexes and builds 3.5 ones from the stored clips; Analyze results and scene cuts are kept. `functions.py` keeps a stub of the retired `embed_video_retry` UDF so the old index can still be loaded and dropped. On the 3-video quick-start set this took about 75 seconds.
+
 ## Deployment (Render + Vercel)
 
 The repo ships a [`render.yaml`](./render.yaml) Blueprint for the backend and a stock Next.js setup for Vercel. End result: frontend on `*.vercel.app` talking to a FastAPI + Pixeltable service on `*.onrender.com`.
@@ -178,7 +180,8 @@ uv run migrate_existing.py --home /absolute/path/to/restored-copy --apply
 
 Use `app_existing.py` for subsequent schema reconciliation on migrated databases,
 not `app.py`. It preserves the legacy JSON types, B-tree indexes, and named
-Marengo indexes. Only computed-expression metadata is updated; existing rows
+Marengo 3.0 indexes. It is not the path to Marengo 3.5: moving to 3.5 means
+regenerating every vector with `app.py`. Only computed-expression metadata is updated; existing rows
 are not recomputed, and missing vectors are not repaired. Opening an old home
 with the new package can itself upgrade Pixeltable metadata, even during a dry
 run. Keep an offline backup of the entire original home (including media) before
@@ -279,5 +282,5 @@ The disk-vs-no-disk decision is what you're choosing. Everything else is plumbin
 - [Building Cross-Modal Video Search with TwelveLabs and Pixeltable](https://www.twelvelabs.io/blog/twelve-labs-and-pixeltable) -- Tutorial on the integration pattern used in this project
 - [Pixeltable Twelve Labs SDK Reference](https://docs.pixeltable.com/sdk/latest/twelvelabs) -- `embed()` UDF signatures for text, image, audio, and video
 - [Working with Twelve Labs in Pixeltable](https://docs.pixeltable.com/howto/providers/working-with-twelvelabs) -- Step-by-step guide with runnable notebook
-- [Twelve Labs Embed API](https://www.twelvelabs.io/product/embed) -- Marengo 3.0 multimodal embeddings
+- [Twelve Labs Embed API](https://www.twelvelabs.io/product/embed) -- Marengo 3.5 multimodal embeddings
 - [Pixeltable Documentation](https://docs.pixeltable.com/) -- Tables, computed columns, embedding indexes, similarity search

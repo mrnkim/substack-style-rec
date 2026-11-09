@@ -37,7 +37,7 @@ cd backend && uv run python -m unittest discover -s tests
 
 ## Architecture
 
-Substack TV-style video recommendation engine demo. Next.js 16 frontend + FastAPI/Pixeltable backend with Twelve Labs Marengo 3.0 embeddings for semantic recommendations.
+Substack TV-style video recommendation engine demo. Next.js 16 frontend + FastAPI/Pixeltable backend with Twelve Labs Marengo 3.5 embeddings for semantic recommendations.
 
 ```
 Pages → src/lib/api.ts → FastAPI backend (backend/) → Pixeltable → TL Embed/Analyze APIs
@@ -63,7 +63,7 @@ Pages → src/lib/api.ts → FastAPI backend (backend/) → Pixeltable → TL Em
 - **`backend/download_videos.py`** — Downloads video files from YouTube using yt-dlp Python API (required before load)
 - **`backend/app.py`** — Class-based schema (`Creators`, `Videos`, `VideoScenes` view), computed columns, and embedding indexes. Applied with `pxt schema update app.py substack_rec`.
 - **`backend/load.py`** — Reads title, creator, category, HLS URL, and thumbnail from the TwelveLabs index and inserts rows
-- **`backend/functions.py`** — `analyze_video` UDF (TL Analyze API), `embed_video_retry` (Marengo video embedding with retry while TwelveLabs finishes processing an upload), `generate_reason` for rec explanations
+- **`backend/functions.py`** — `analyze_video` UDF (TL Analyze API), `generate_reason` for rec explanations, and a raising stub of the retired `embed_video_retry` UDF (kept so pre-3.5 databases can load and drop their old index)
 - **`backend/routers/videos.py`** — Video endpoints + shared utilities: `_scene_similarity`, `_title_similarity`, `_select_videos`, `_attach_attrs`, `_load_creators_map` (cached 5 min)
 - **`backend/routers/`** — creators, recommendations, search (all import shared functions from videos.py)
 
@@ -137,4 +137,4 @@ CORS_ORIGINS=http://localhost:3000
 
 ## Current state
 
-FastAPI + Pixeltable 0.7.18 backend with class-based schemas in `app.py`. Computed columns store scene cut times and the Analyze API topic, style, and tone; failed Analyze calls leave tags unknown. The `VideoScenes` view splits each video into clips (`video_splitter` with `mode='fast'`), and an unnamed Marengo 3.0 embedding index on `video_segment` covers search and recommendations. A title embedding index is the text fallback. Pixeltable maintains the scene index incrementally on ordinary inserts and deletes. Recommendations reuse stored scene vectors first; text/title fallbacks call TwelveLabs. FastAPI applies the 70/30 subscription/discovery target when candidates permit and caps results at two per creator. The frontend catalog helper follows every backend page. Shared `_scene_similarity` / `_title_similarity` in `videos.py` eliminate code duplication. `_select_videos` fetches computed attrs in a single query pass. `_load_creators_map()` cached with 5-min TTL. Quick-start: 3 videos (~4 min setup). Full: 25 videos from the TL index with HLS playback, 10 creators. Dependencies: `scenedetect`, `opencv-python-headless`.
+FastAPI + Pixeltable 0.7.24 backend with class-based schemas in `app.py`. Computed columns store scene cut times and the Analyze API topic, style, and tone; failed Analyze calls leave tags unknown. The `VideoScenes` view splits each video into clips (`video_splitter` with `mode='fast'`), and an unnamed Marengo 3.5 embedding index on `video_segment` covers search and recommendations. Scene clips (40–90 s, over the 30 s sync limit) are embedded with `pxtf.twelvelabs.async_embed_asset` (async task, one fused vector per clip); text and image queries use the synchronous `pxtf.twelvelabs.embed`. A title embedding index is the text fallback. Pixeltable maintains the scene index incrementally on ordinary inserts and deletes. Recommendations reuse stored scene vectors first; text/title fallbacks call TwelveLabs. FastAPI applies the 70/30 subscription/discovery target when candidates permit and caps results at two per creator. The frontend catalog helper follows every backend page. Shared `_scene_similarity` / `_title_similarity` in `videos.py` eliminate code duplication. `_select_videos` fetches computed attrs in a single query pass. `_load_creators_map()` cached with 5-min TTL. Quick-start: 3 videos (~4 min setup). Full: 25 videos from the TL index with HLS playback, 10 creators. Dependencies: `scenedetect`, `opencv-python-headless`, `twelvelabs>=1.3.6` (Marengo 3.5).

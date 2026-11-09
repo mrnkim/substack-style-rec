@@ -223,7 +223,7 @@ export async function searchVideos(
 
 /**
  * Multimodal search: upload an image, video clip, or audio file to find
- * matching videos via Marengo 3.0 cross-modal embeddings.
+ * matching videos via Marengo 3.5 cross-modal embeddings.
  */
 export async function searchByFile(
   file: File,
