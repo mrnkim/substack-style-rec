@@ -47,6 +47,21 @@ The local comparison found these differences.
 - Scores are lower for text queries and closer together for video to video matches. The app does not show scores, so users only see the order.
 - Search by uploaded video or audio takes about 1 to 2 minutes instead of about 15 to 25 seconds, because it runs as an async task.
 
+A second test checked search for content inside the videos, which is the job of the scene index. TwelveLabs Analyze (Pegasus 1.5) listed 41 things that appear in the 3 local videos but not in their titles, e.g., songs, people, brands, and on-screen text. 18 of them were checked against video frames. Each item was then run as a text search over all 35 scene clips on Marengo 3.5.
+
+- The right video ranked first for 38 of the 41 queries.
+- The right clip ranked first for 21 of them, and was in the top 3 for 34. When the exact clip was missed, the right clip was usually the next one.
+- The 3 misses were a person shown without his name on screen, the website on the end card, and an old TV caption.
+- A query for something that is in none of the videos, "girl from ipanema", scored about 0.12. The right answers above mostly scored 0.16 to 0.30.
+- On topic queries that describe a whole video, e.g., "logo design", the right video sometimes ranked second.
+
+A third test used the "KPop Demon Hunters | Hot Ones Versus" video, where "The Girl from Ipanema" plays in a scene near 802 seconds and the title says nothing about it. The video was added to the local database, for 4 videos and 52 clips in all.
+
+- "girl from ipanema" ranked the clip from 778 to 818 seconds first, at 0.167 against 0.138 for the next clip. Through the app's search API, the video ranked first at 0.167 against 0.111.
+- "The Girl from Ipanema by Frank Sinatra" and "sinatra" also ranked that clip first, but by small margins (0.159 against 0.157 for "sinatra").
+- "Frank Sinatra" ranked that clip 7th, and the video 3rd in the app.
+- TwelveLabs does not always return the same vector for the same text. In 3 repeated calls for "sinatra", one vector differed slightly (cosine 0.996). So near ties can change order between requests. Pixeltable's ranking matched the exact cosine similarity of the stored vectors.
+
 ### What happens when the pull request is merged
 
 1. Render rebuilds and restarts the backend service, because `autoDeploy` is on for `main`. This takes about 3 to 5 minutes. Vercel rebuilds the frontend.
