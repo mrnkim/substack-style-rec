@@ -2,7 +2,10 @@
 
 > Last updated: 2026-11-10
 >
-> This is the one agent handoff for this repo. Start with "Current task". The session logs at the bottom are history.
+> This is the one agent handoff for this repo.
+>
+> **Pierre, or Pierre's agent: your part is the next section, "Current task (for Pierre)". Follow it from "Before you start" through step 8, in order. It ends at the line "End of Pierre's part". Everything after that line is reference and history. Read it only when a step sends you there, e.g., to a gotcha under History.**
+>
 > Other docs:
 > - **Setup & quick start** → [`README.md`](./README.md)
 > - **Agent guide** → [`AGENTS.md`](./AGENTS.md) (loaded by `CLAUDE.md`)
@@ -10,7 +13,7 @@
 
 ---
 
-## Current task: move the live app to Marengo 3.5
+## Current task (for Pierre): move the live app to Marengo 3.5
 
 Branch `marengo-model-upgrade`. This section is for the person or agent with access to the Render service.
 
@@ -28,7 +31,7 @@ Branch `marengo-model-upgrade`. This section is for the person or agent with acc
 - Pixeltable 0.7.24 adds `pxtf.twelvelabs.async_embed_asset` ([pixeltable/pixeltable#1907](https://github.com/pixeltable/pixeltable/pull/1907)). It runs a TwelveLabs async embedding task and returns one fused visual and audio vector for a whole clip of any length. The synchronous Marengo 3.5 call rejects audio and video over 30 seconds, and the scene clips average about 88 seconds.
 - `backend/app.py` is the schema for a new install. Scene clips use `async_embed_asset`, and text and image queries use `embed`, both with `model_name="marengo3.5"`.
 - `backend/app_existing_marengo35.py` is the schema for the live database. It is `app_existing.py` with the two named indexes, `title_marengo` and `scene_marengo`, switched to Marengo 3.5. Nothing else changes.
-- `backend/upgrade_existing_marengo35.py` applies that schema to the live database. By default it only prints the plan. With `--apply` it drops the two indexes and builds them again with Marengo 3.5. It keeps every row, the Analyze tags, the scene cuts, and the scene clips. It refuses any other schema change. It sets Pixeltable's row buffer to 64, the value that worked on Render in June.
+- Step 6 applies that schema with the `pxt` CLI. `backend/upgrade_existing_marengo35.py` is a fallback that does the same rebuild from Python. By default it only prints the plan. With `--apply` it drops the two indexes and builds them again with Marengo 3.5. It keeps every row, the Analyze tags, the scene cuts, and the scene clips. It refuses any other schema change. It sets Pixeltable's row buffer to 64, the value that worked on Render in June.
 - The upload search handler in `backend/routers/search.py` is now a plain `def` instead of `async def`. As `async def`, it blocked the server while a video upload search ran, which takes about 47 seconds on Marengo 3.5: `/api/videos` took 44 seconds instead of 0.02 seconds. After the fix it answered in 0.01 to 0.03 seconds during the same search.
 
 ### What was tested, and what was not
@@ -37,7 +40,7 @@ These tests ran on a laptop, not on Render.
 
 - A new install with 3 videos built with no errors. Search and recommendations work.
 - The same 3 videos were loaded into the old code (Pixeltable 0.7.18, Marengo 3.0), and the two backends were compared request by request. The catalog, creators, style, and tone are the same. Recommendations take the same time, about 40 to 70 ms.
-- A copy of the live schema was built with 1 video on Marengo 3.0. The upgrade script rebuilt its indexes with Marengo 3.5 in 33 seconds. The Analyze tags, scene cuts, and clip rows were the same before and after. Search, vector reuse, and title search work after the rebuild. A second run reports that there is nothing to do.
+- A copy of the live schema was built with 1 video on Marengo 3.0. `pxt schema update app_existing_marengo35.py` rebuilt its indexes with Marengo 3.5 in 63 seconds, and the upgrade script did the same in 33 seconds on a second copy. The Analyze tags, scene cuts, and clip rows were the same before and after. Search, vector reuse, and title search work after the rebuild. A second run reports that there is nothing to do.
 - The Docker image was built from the committed code with the repo's `Dockerfile` (Python 3.13.18, ffmpeg 7.1.5), on ARM Linux in a local VM. Inside it, the 15 backend tests pass. A new install loaded 3 videos with 0 errors. The server, started with `entrypoint.sh`, answered every endpoint, including text, image, and video search, the three recommendation endpoints, and the CORS check. The upgrade script ran the plan, `--apply`, and a rerun on a copy of the live schema with 1 video.
 - The frontend production build (`npm run build`) passes, and the home, watch, search, and how-it-works pages work in a browser against the new backend.
 
@@ -166,12 +169,24 @@ This changes metadata only. It does not touch rows or indexes.
 
 ```bash
 cd /app
-uv run upgrade_existing_marengo35.py --home /var/pixeltable
+uv run pxt schema diff app_existing_marengo35.py substack_rec
 ```
 
-The output should list exactly two indexes that "will be REPLACED", `title_marengo` and `scene_marengo`, and end with "Dry run only".
+The output should match this, with `creators` unchanged and exactly the two indexes re-created:
 
-STOP if it prints "Refusing" or anything else. Report the full output.
+```
+= substack_rec/creators    no change
+~ substack_rec/videos      update
+    - index 'title_marengo' on column 'title' will be dropped and re-created from its new definition  DESTRUCTIVE
+    + EmbeddingIndex 'title_marengo' will be re-created  safe
+~ substack_rec/video_scenes update
+    - index 'scene_marengo' on column 'video_segment' will be dropped and re-created from its new definition  DESTRUCTIVE
+    + EmbeddingIndex 'scene_marengo' will be re-created  safe
+
+Plan: 0 create, 2 update, 1 unchanged, 0 extra  |  2 destructive
+```
+
+STOP if it shows any other change, e.g., a column, or anything marked UNSUPPORTED. Report the full output.
 
 #### Step 6. Rebuild the indexes with Marengo 3.5
 
@@ -181,25 +196,22 @@ Memory comes first. The recommended way is to repeat what worked in June.
 
 1. With approval, scale the service to the 4 GB instance.
 2. Apply gotcha 2 under History, so that Postgres starts again.
-3. Run the rebuild with the default row buffer of 64.
 
 Running on 2 GB without resizing has not been tested, and the same build ran out of memory there in June.
 
-Start the rebuild detached and follow its log.
+Start the rebuild detached and follow its log. The command restarts the `pxt` daemon with a 30 minute TwelveLabs timeout per clip (the default is 10 minutes), then applies the schema.
 
 ```bash
 cd /app
-setsid bash -c 'cd /app && uv run upgrade_existing_marengo35.py --home /var/pixeltable --apply > /var/pixeltable/upgrade-marengo35.log 2>&1' < /dev/null &
+setsid bash -c 'cd /app && export TWELVELABS_TIMEOUT=1800 && uv run pxt daemon restart && uv run pxt schema update app_existing_marengo35.py substack_rec --allow-destructive -f' > /var/pixeltable/upgrade-marengo35.log 2>&1 < /dev/null &
 tail -f /var/pixeltable/upgrade-marengo35.log
 ```
 
-In a second SSH session, watch memory with `free -m` every minute or so.
+The log ends with `updated substack_rec/videos` and `updated substack_rec/video_scenes` when it is done. In a second SSH session, watch memory with `free -m` every minute or so.
 
-- A clip that fails to embed does not stop the build. Pixeltable records the error on that clip and leaves its vector empty.
-- If the job stops before it prints "Rebuilt title_marengo and scene_marengo", first clear any stale locks (gotcha 4 under History). Then run the same command again. The script continues from where it stopped.
-- If the service runs out of memory and restarts, STOP and report.
-
-When it finishes, the log ends with the number of videos, the number of clips, and the number of clips without a vector.
+- A clip that fails to embed does not stop the build. Pixeltable records the error on that clip and leaves its vector empty. The live app already runs with clips that have no vector (111 today), so this does not need a retry.
+- If the job stops before it finishes, first clear any stale locks (gotcha 4 under History). Then run `uv run pxt schema diff app_existing_marengo35.py substack_rec` again. It shows only the index that still needs building. Run the same `setsid` command again.
+- If the service runs out of memory and restarts, STOP and report. The fallback is `uv run upgrade_existing_marengo35.py --home /var/pixeltable --apply`, which does the same rebuild in one Python process with Pixeltable's row buffer capped at 64, the June setting. The CLI uses Pixeltable's default buffer.
 
 #### Step 7. Restart the web service
 
@@ -209,10 +221,12 @@ Restart the service from the Render dashboard, so the running app loads the new 
 
 ```bash
 cd /app
+uv run pxt daemon restart                                     # back to the normal timeout
+uv run pxt schema diff app_existing_marengo35.py substack_rec # expect every table "no change"
 uv run pxt idxs
 # expect: scene_marengo ... async_embed_asset(video_segment, model_name='marengo3.5')
 #         title_marengo ... embed(title, None, model_name='marengo3.5')
-uv run upgrade_existing_marengo35.py --home /var/pixeltable   # expect "Nothing to do"
+uv run upgrade_existing_marengo35.py --home /var/pixeltable   # read-only here; prints the clip counts
 curl -s "https://substack-rec-api-g2ui.onrender.com/api/search?q=fade%20out%20ending%20pop%20song" | head -c 400
 ```
 
@@ -242,6 +256,8 @@ Restore the disk snapshot from step 2, then revert the merge commit on `main`. D
 - [pixeltable/pixeltable#1732](https://github.com/pixeltable/pixeltable/pull/1732) (PXT-1553) adds Marengo 3.5 to the synchronous `embed()`, with the 30 second and 32 MB limits.
 - [pixeltable/pixeltable#1902](https://github.com/pixeltable/pixeltable/pull/1902) (PXT-1234) makes the TwelveLabs UDFs wait until an uploaded asset is ready. This is why the app no longer needs its own retry UDF.
 - [pixeltable/pixeltable#1800](https://github.com/pixeltable/pixeltable/pull/1800) (PXT-1380) is the scene detection fix described above.
+
+**End of Pierre's part.** Everything below is reference and history. The steps above link to the gotchas under History where they need them.
 
 ---
 
