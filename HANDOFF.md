@@ -17,7 +17,7 @@ Branch `marengo-model-upgrade`. This section is for the person or agent with acc
 ### Before you start
 
 - In the Render dashboard, open the service `substack-rec-api`, then Settings, and check which repository and branch it deploys from. This plan assumes `mrnkim/substack-style-rec`, branch `main`. If it is anything else, e.g., `pierrebrunelle/substack-style-rec`, STOP and report it, because merging this pull request would then not deploy.
-- The pull request from `apreshill:marengo-model-upgrade` into `mrnkim/substack-style-rec` `main` must be open.
+- The pull request is [mrnkim/substack-style-rec#19](https://github.com/mrnkim/substack-style-rec/pull/19), from `apreshill:marengo-model-upgrade` into `main`.
 - You need SSH access to the Render service `substack-rec-api`, and access to its dashboard for the disk snapshot and the restart.
 - Alison or Pierre must be available to approve each STOP in the steps below.
 - Then follow "Steps for the agent" in order, starting at step 1. Steps 1 and 2 happen before the merge.
