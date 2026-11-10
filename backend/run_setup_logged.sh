@@ -25,6 +25,21 @@
 
 set -euo pipefail
 cd "$(dirname "$0")"
+
+# `pxt` commands run in a daemon that never reads .env files. Export the same settings
+# config.py loads (.env overrides .env.local); otherwise the daemon opens ~/.pixeltable
+# while drop_dir and load.py use this project's PIXELTABLE_HOME.
+set -a
+[[ -f .env.local ]] && source .env.local
+[[ -f .env ]] && source .env
+set +a
+if [[ -n "${PIXELTABLE_HOME:-}" && "$PIXELTABLE_HOME" != /* ]]; then
+  export PIXELTABLE_HOME="$(pwd)/${PIXELTABLE_HOME#./}"
+fi
+# A project-specific port keeps this daemon (and its pidfile under PIXELTABLE_HOME)
+# apart from daemons that other projects run on the default port, 22089.
+export PXT_PORT="${PXT_PORT:-22189}"
+
 mkdir -p logs
 STAMP=$(date +%Y%m%d-%H%M%S)
 LOG="logs/setup-${STAMP}.log"
@@ -53,6 +68,11 @@ pxt.drop_dir(config.APP_NAMESPACE, force=True)
 print('drop_dir OK:', config.APP_NAMESPACE)
 " 2>&1 | tee -a "$LOG"
 fi
+
+log "--- pxt daemon restart (PIXELTABLE_HOME=${PIXELTABLE_HOME:-~/.pixeltable}, PXT_PORT=$PXT_PORT) ---"
+# The daemon reads its environment and imports app.py/functions.py once; restart so it
+# sees the variables above and the current code.
+uv run pxt daemon restart 2>&1 | tee -a "$LOG"
 
 log "--- pxt schema update (create/update schema) ---"
 set +e

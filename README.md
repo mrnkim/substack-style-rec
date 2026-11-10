@@ -129,6 +129,8 @@ uv run main.py                             # FastAPI on localhost:8000
 #   ./run_setup_logged.sh --drop-dir
 #   ./run_setup_logged.sh --drop-dir --full
 # Use `PIXELTABLE_HOME=./data` in backend/.env so other Pixeltable projects under ~/.pixeltable stay safe.
+# If you set it, also export it before any manual `uv run pxt ...` command (`set -a; source .env.local; set +a`):
+# the pxt CLI daemon does not read .env files and would otherwise use ~/.pixeltable. The setup script does this for you.
 
 # For the full 25-video dataset (13GB download, ~30 min setup):
 uv run download_videos.py --full
@@ -155,7 +157,7 @@ Without this, the browser talks to the Next.js `/api/*` routes instead of FastAP
 
 Quick-start uses 3 short videos for fast iteration (~4 min total setup). Pass `--full` to load all 25 videos with scene detection and Marengo embeddings.
 
-**Upgrading a database built with Marengo 3.0.** Marengo 3.0 and 3.5 vectors are not interchangeable, so the title and scene indexes must be rebuilt. From `backend/`, run `uv run pxt schema update app.py substack_rec --allow-destructive`. It drops the two 3.0 indexes and builds 3.5 ones from the stored clips; Analyze results and scene cuts are kept. `functions.py` keeps a stub of the retired `embed_video_retry` UDF so the old index can still be loaded and dropped. On the 3-video quick-start set this took about 75 seconds.
+**Upgrading a local database built from `app.py` with Marengo 3.0.** Marengo 3.0 and 3.5 vectors are not interchangeable, so the title and scene indexes must be rebuilt. From `backend/`, run `uv run pxt schema update app.py substack_rec --allow-destructive`. It drops the two 3.0 indexes and builds 3.5 ones from the stored clips; Analyze results and scene cuts are kept. `functions.py` keeps a stub of the retired `embed_video_retry` UDF so the old index can still be loaded and dropped. On the 3-video quick-start set this took about 75 seconds. This is not the path for the live Render database; see [`HANDOFF.md`](./HANDOFF.md).
 
 ## Deployment (Render + Vercel)
 
@@ -180,8 +182,11 @@ uv run migrate_existing.py --home /absolute/path/to/restored-copy --apply
 
 Use `app_existing.py` for subsequent schema reconciliation on migrated databases,
 not `app.py`. It preserves the legacy JSON types, B-tree indexes, and named
-Marengo 3.0 indexes. It is not the path to Marengo 3.5: moving to 3.5 means
-regenerating every vector with `app.py`. Only computed-expression metadata is updated; existing rows
+Marengo 3.0 indexes. To move a migrated database to Marengo 3.5, run
+`upgrade_existing_marengo35.py`, which rebuilds only the two named indexes from
+`app_existing_marengo35.py`; after that, use `app_existing_marengo35.py` for schema
+updates. The step-by-step rollout for the live database is in [`HANDOFF.md`](./HANDOFF.md).
+For the migration itself, only computed-expression metadata is updated; existing rows
 are not recomputed, and missing vectors are not repaired. Opening an old home
 with the new package can itself upgrade Pixeltable metadata, even during a dry
 run. Keep an offline backup of the entire original home (including media) before

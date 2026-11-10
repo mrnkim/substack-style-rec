@@ -18,10 +18,11 @@ npm start            # Serve production build
 # Backend (run from backend/ directory)
 uv sync                                          # Install deps from lockfile into .venv
 uv run download_videos.py                        # Download 3 quick-start videos (or --full for all 25; add --r2 on cloud hosts)
+set -a; source .env.local; set +a                # Before any `pxt` command: its daemon ignores .env files, so export PIXELTABLE_HOME and PXT_PORT or it opens ~/.pixeltable
 uv run pxt schema diff app.py substack_rec       # Preview schema changes
 uv run pxt schema update app.py substack_rec     # Create or update tables, view, and indexes
 uv run load.py                                   # Insert 3 quick-start videos (or --full for all 25)
-./run_setup_logged.sh --drop-dir                 # pxt.drop_dir(substack_rec), then schema update, then load.py; logs to backend/logs/setup-*.log
+./run_setup_logged.sh --drop-dir                 # Exports .env.local/.env, restarts the pxt daemon, pxt.drop_dir(substack_rec), schema update, load.py; logs to backend/logs/setup-*.log
 uv run main.py                                   # Start FastAPI on :8000
 
 # Pixeltable reset: use --drop-dir for this app only. Deleting PIXELTABLE_HOME or pgdata wipes *all*
