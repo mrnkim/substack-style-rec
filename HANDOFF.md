@@ -29,10 +29,13 @@ These tests ran on a laptop, not on Render.
 - A new install with 3 videos built with no errors. Search and recommendations work.
 - The same 3 videos were loaded into the old code (Pixeltable 0.7.18, Marengo 3.0), and the two backends were compared request by request. The catalog, creators, style, and tone are the same. Recommendations take the same time, about 40 to 70 ms.
 - A copy of the live schema was built with 1 video on Marengo 3.0. The upgrade script rebuilt its indexes with Marengo 3.5 in 33 seconds. The Analyze tags, scene cuts, and clip rows were the same before and after. Search, vector reuse, and title search work after the rebuild. A second run reports that there is nothing to do.
+- The Docker image was built from the committed code with the repo's `Dockerfile` (Python 3.13.18, ffmpeg 7.1.5), on ARM Linux in a local VM. Inside it, the 15 backend tests pass. A new install loaded 3 videos with 0 errors. The server, started with `entrypoint.sh`, answered every endpoint, including text, image, and video search, the three recommendation endpoints, and the CORS check. The upgrade script ran the plan, `--apply`, and a rerun on a copy of the live schema with 1 video.
+- The frontend production build (`npm run build`) passes, and the home, watch, search, and how-it-works pages work in a browser against the new backend.
 
 These things were not tested.
 
 - Nothing was run on the live server.
+- The Docker image was not built for x86_64 Linux, which is what Render runs.
 - The memory use of the rebuild on Render was not measured.
 - The full set of 25 videos and 476 clips was not rebuilt anywhere.
 
@@ -125,7 +128,7 @@ STOP if the service does not come up. Report the Render log.
 
 #### Step 4. Adopt the schema, only if step 1 showed it is needed
 
-Skip this step if the dry run in step 1 printed no differences.
+Skip this step if the dry run in step 1 printed "Catalog is up to date."
 
 ```bash
 cd /app
