@@ -14,6 +14,13 @@
 
 Branch `marengo-model-upgrade`. This section is for the person or agent with access to the Render service.
 
+### Before you start
+
+- The pull request from `marengo-model-upgrade` into `main` must be open. Render and Vercel deploy from `main` (see History).
+- You need SSH access to the Render service `substack-rec-api`, and access to its dashboard for the disk snapshot and the restart.
+- Alison or Pierre must be available to approve each STOP in the steps below.
+- Then follow "Steps for the agent" in order, starting at step 1. Steps 1 and 2 happen before the merge.
+
 ### What is done
 
 - The backend uses Pixeltable 0.7.24 and twelvelabs 1.3.8.
@@ -21,6 +28,7 @@ Branch `marengo-model-upgrade`. This section is for the person or agent with acc
 - `backend/app.py` is the schema for a new install. Scene clips use `async_embed_asset`, and text and image queries use `embed`, both with `model_name="marengo3.5"`.
 - `backend/app_existing_marengo35.py` is the schema for the live database. It is `app_existing.py` with the two named indexes, `title_marengo` and `scene_marengo`, switched to Marengo 3.5. Nothing else changes.
 - `backend/upgrade_existing_marengo35.py` applies that schema to the live database. By default it only prints the plan. With `--apply` it drops the two indexes and builds them again with Marengo 3.5. It keeps every row, the Analyze tags, the scene cuts, and the scene clips. It refuses any other schema change. It sets Pixeltable's row buffer to 64, the value that worked on Render in June.
+- The upload search handler in `backend/routers/search.py` is now a plain `def` instead of `async def`. As `async def`, it blocked the server while a video upload search ran, which takes about 47 seconds on Marengo 3.5: `/api/videos` took 44 seconds instead of 0.02 seconds. After the fix it answered in 0.01 to 0.03 seconds during the same search.
 
 ### What was tested, and what was not
 
