@@ -1,0 +1,46 @@
+/* Figures in the TwelveLabs diagram language (Pentagram identity): warm gray ground, fine grid, thin black line work,
+   rounded timeline bars, matches filled black, outlined label pills, leader lines with dot ends. */
+:root { --ground: #f4f3f3; --grid: #e5e3e2; --ink: #1d1c1b; --ink-2: #6b6764; --line: 1.5px; }
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { width: 1200px; position: relative; font-family: "Geist", system-ui, sans-serif; color: var(--ink);
+  background-color: var(--ground);
+  background-image: linear-gradient(var(--grid) 1px, transparent 1px), linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+  background-size: 24px 24px; background-position: -1px -1px; -webkit-font-smoothing: antialiased; }
+.abs { position: absolute; }
+.tag { position: absolute; height: 30px; padding: 0 13px; border: var(--line) solid var(--ink); border-radius: 15px; background: var(--ground);
+  display: inline-flex; align-items: center; gap: 8px; font-size: 15px; font-weight: 450; white-space: nowrap; }
+.tag.fill { background: var(--ink); color: var(--ground); }
+.tag.ghost { border-style: dashed; border-color: #a9a5a2; color: var(--ink-2); }
+.note { position: absolute; font-size: 16px; line-height: 1.45; color: var(--ink-2); }
+.lede { position: absolute; font-size: 18px; line-height: 1.45; }
+svg.art { position: absolute; left: 0; top: 0; overflow: visible; }
+svg.art .o { fill: var(--ground); stroke: var(--ink); stroke-width: 1.5; }
+svg.art .f { fill: var(--ink); stroke: var(--ink); stroke-width: 1.5; }
+svg.art .l { fill: none; stroke: var(--ink); stroke-width: 1.5; }
+svg.art .d { fill: var(--ink); }
+.mono { font-family: "Fragment Mono", ui-monospace, monospace; }
+.grp { position: absolute; border: 1.5px solid var(--ink); border-radius: 22px; }
+.grp.dash { border-style: dashed; border-color: #a9a5a2; }
+.item { position: absolute; border: 1.5px solid var(--ink); border-radius: 14px; background: var(--ground); padding: 12px 16px;
+  display: flex; flex-direction: column; justify-content: center; }
+.item.fill { background: var(--ink); color: var(--ground); }
+.item.fill .s { color: #c9c5c2; }
+.item .t { font-size: 18px; font-weight: 550; line-height: 1.2; letter-spacing: -.1px; }
+.item .t.mono { font-size: 16.5px; font-weight: 400; }
+.item .s { font-size: 15px; line-height: 1.35; color: var(--ink-2); margin-top: 4px; }
+.row { padding: 10px 0 8px; border-top: 1.5px solid #cfccc9; }
+.row:first-of-type { border-top: none; }
+.num { position: absolute; width: 28px; height: 28px; border: 1.5px solid var(--ink); border-radius: 50%; display: flex; align-items: center;
+  justify-content: center; font-size: 14px; font-weight: 500; background: var(--ground); }
+.head { position: absolute; font-size: 18px; font-weight: 550; letter-spacing: -.1px; }
+svg.art { z-index: 1; }
+.tag { z-index: 2; }
+/* Color coding from the TwelveLabs site tokens: black = TwelveLabs, pale yellow = Pixeltable,
+   peach = app code, pale blue = browser. Ink outlines stay on everything. */
+:root { --px: #fde3a2; --py: #ffd3be; --fe: #c4eefe; }
+.item.px { background: var(--px); } .item.py { background: var(--py); } .item.fe { background: var(--fe); }
+.item.px .s, .item.py .s, .item.fe .s { color: #4f4b48; }
+.tag.px { background: var(--px); } .tag.py { background: var(--py); } .tag.fe { background: var(--fe); }
+.grp.px { background: color-mix(in srgb, var(--px) 38%, var(--ground)); }
+.legend { position: absolute; display: flex; gap: 20px; align-items: center; font-size: 14.5px; color: var(--ink-2); }
+.legend i { display: inline-block; width: 16px; height: 16px; border: 1.5px solid var(--ink); border-radius: 5px; margin-right: 7px; vertical-align: -3px; }
