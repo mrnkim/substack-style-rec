@@ -1,6 +1,6 @@
 """Semantic video search via Pixeltable .similarity().
 
-Queries go through the video_scenes view (scene-detect + Marengo 3.0
+Queries go through the video_scenes view (scene-detect + Marengo 3.5
 segment embeddings) for content-based search. Falls back to title
 embeddings when scenes are unavailable.
 """
@@ -91,8 +91,9 @@ def _search(videos_t, scenes_t, q, creator_id, limit, **file_kwargs):
         else:
             logger.warning(
                 "  File multimodal search failed (embed limits or similarity error). "
-                "Twelve Labs caps images at ~5 MB and video query files at ~36 MB; "
-                "try a smaller file or add a text query for title fallback."
+                "Marengo 3.5 caps image queries at 32 MB; video and audio queries run "
+                "as async embedding tasks. Try a smaller file or add a text query for "
+                "title fallback."
             )
         return None
 
@@ -125,7 +126,7 @@ def search_videos(
 
 
 @router.post("/search", response_model=SearchResponse)
-async def search_multimodal(
+def search_multimodal(  # def, not async def: Pixeltable calls block, and FastAPI runs def handlers in a thread
     q: str | None = Form(None),
     file: UploadFile | None = File(None),
     creator_id: str | None = Form(None),

@@ -20,9 +20,9 @@ const TIPS: Record<string, string> = {
   query:
     "Similarity search via .similarity() and filtering. Uses pgvector under the hood.",
   TwelveLabs:
-    "Queries use Pixeltable's built-in Marengo embed. Analyze and scene video embeds are custom user-defined functions (UDFs) in functions.py. Analyze results are a computed column, and the scene embedding is the embedding index's embedding function.",
+    "Pixeltable embeds scene clips and search queries. Analyze is a custom user-defined function (UDF) in functions.py. Analyze results are a computed column, and the scene embedding is the embedding index's embedding function.",
   embed:
-    "Embed API v2 with Marengo 3.0. Stores one 512-dimension vector for each scene clip.",
+    "Embed API v2 with Marengo. Pixeltable stores one 512-dimension vector for each scene clip.",
   analyze:
     "Analyze API extracting structured attributes: topic, style, and tone from video content.",
 };
@@ -422,8 +422,8 @@ export default function ArchitectureDiagram() {
             <IntegrationBadge text="pixeltable integration" />
 
             <div className="text-center text-[10px] leading-snug text-[var(--text-tertiary)]">
-              Queries use the built-in Marengo embed. Analyze and scene video
-              embeds are custom user-defined functions (UDFs). Analyze results are a
+              Pixeltable uses Marengo to embed scenes and queries.
+              Analyze is a custom user-defined function (UDF). Analyze results are a
               computed column, and scene embeds run inside the embedding index.
             </div>
           </Zone>

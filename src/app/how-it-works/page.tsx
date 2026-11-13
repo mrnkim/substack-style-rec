@@ -11,7 +11,10 @@ import ArchitectureDiagram, {
 
 const REPO_URL = "https://github.com/mrnkim/substack-style-rec";
 
-const schemaSnippet = `class Videos(TableModel, name="videos"):
+const schemaSnippet = `marengo = pxtf.twelvelabs.embed.using(model_name="marengo3.5")
+marengo_async = pxtf.twelvelabs.async_embed_asset.using(model_name="marengo3.5")
+
+class Videos(TableModel, name="videos"):
     id = pxt.Column(type=pxt.String, primary_key=True)
     title: pxt.String | None
     video: pxt.Video | None
@@ -33,10 +36,10 @@ const sceneIndexSnippet = `class VideoScenes(
     __indexes__ = [
         pxt.EmbeddingIndex(
             video_segment,
-            embedding=embed_video_retry,  # type: ignore[name-defined]
+            video_embed=marengo_async,
+            audio_embed=marengo_async,
             string_embed=marengo,
             image_embed=marengo,
-            audio_embed=marengo,
         )
     ]`;
 
@@ -228,7 +231,7 @@ export default function HowItWorksPage() {
             className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[var(--accent-muted)] border border-[var(--border-accent)] text-xs font-medium text-[var(--accent)] hover:bg-[var(--bg-elevated)] transition-colors"
           >
             <TwelveLabsLogo className="w-3.5 h-3.5" />
-            TwelveLabs · Marengo 3.0 + Analyze
+            TwelveLabs · Marengo + Analyze
           </a>
           <a
             href="#stack"
@@ -266,7 +269,7 @@ export default function HowItWorksPage() {
                 </div>
                 <p className="text-sm text-[var(--text-secondary)] leading-relaxed">
                   TwelveLabs builds models for video understanding. This app uses two of
-                  them. Marengo 3.0 creates an embedding for each scene clip and for each
+                  them. Marengo creates an embedding for each scene clip and for each
                   search query, so a search can match on what happens inside a video, not
                   just its title. Pegasus
                   1.5, called through the Analyze API, returns the topic, style, and tone
@@ -364,7 +367,7 @@ export default function HowItWorksPage() {
               <StepCard number={2} title="Compute on insert" when="When a video is added">
                 When a row is added, Pixeltable calls Pegasus 1.5 through the Analyze
                 API and stores the video&apos;s topic, style, and tone in the same row.
-                It also splits the video into scenes and gets a Marengo 3.0 embedding
+                It also splits the video into scenes and gets a Marengo embedding
                 for each scene. Pixeltable keeps the scene index up to date as videos
                 are added or removed. Normal inserts and deletes update the index
                 incrementally, without rebuilding the whole catalog.
@@ -468,7 +471,7 @@ export default function HowItWorksPage() {
                   </h3>
                 </div>
                 <ul className="text-xs text-[var(--text-secondary)] leading-relaxed space-y-1.5">
-                  <li>Turns each scene and each search query into a 512-dimensional vector with Marengo 3.0</li>
+                  <li>Turns each scene and each search query into a 512-dimensional vector with Marengo</li>
                   <li>Returns the topic, style, and tone of each video with Pegasus 1.5, through the Analyze API</li>
                   <li>Streams playback from the TwelveLabs index, with HTTP Live Streaming (HLS)</li>
                 </ul>
@@ -559,7 +562,7 @@ export default function HowItWorksPage() {
                 label="Embedding each scene"
                 path="backend/app.py"
                 code={sceneIndexSnippet}
-                caption="A view is a table built from another table. Here each row is one scene clip, and the index embeds each clip with Marengo."
+                caption="Here each row is one scene clip. This example shows the Marengo 3.5 schema for a new installation."
               />
               <CodeBlock
                 label="Search and recommendations"

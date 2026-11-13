@@ -3,7 +3,7 @@
 Hierarchy:
     creators (table)       creator profiles
     videos (table)         source videos + Twelve Labs Analyze attributes
-    -> video_scenes (view) one row per scene (video_splitter), Marengo embeddings for semantic search
+    -> video_scenes (view) one row per scene (video_splitter), Marengo 3.5 embeddings for semantic search
 
 Create or update the schema with:
     pxt init
@@ -15,9 +15,14 @@ from __future__ import annotations
 import pixeltable as pxt
 import pixeltable.functions as pxtf
 
-from functions import analyze_video, embed_video_retry
+from functions import analyze_video
 
-marengo = pxtf.twelvelabs.embed.using(model_name="marengo3.0")
+# Marengo 3.5 has two embed paths. Both return 512-d vectors in the same space.
+# - embed(): synchronous multi_input call for text and images (and audio/video up to 30 s).
+# - async_embed_asset(): async embedding task that returns one fused visual+audio vector
+#   for a whole clip of any length. Scene clips average ~90 s, so they need this path.
+marengo = pxtf.twelvelabs.embed.using(model_name="marengo3.5")
+marengo_async = pxtf.twelvelabs.async_embed_asset.using(model_name="marengo3.5")
 TableModel = pxt.model_base()
 
 
@@ -56,10 +61,10 @@ class VideoScenes(
 ):
     __indexes__ = [
         pxt.EmbeddingIndex(
-            video_segment,
-            embedding=embed_video_retry,  # type: ignore[name-defined]
+            video_segment,  # type: ignore[name-defined]
+            video_embed=marengo_async,
+            audio_embed=marengo_async,
             string_embed=marengo,
             image_embed=marengo,
-            audio_embed=marengo,
         )
     ]
