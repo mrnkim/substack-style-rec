@@ -9,6 +9,7 @@ import functions
 import httpx
 from models import ForYouRequest
 from routers import recommendations
+from routers import videos
 from routers.videos import _build_video_response
 
 
@@ -27,6 +28,27 @@ def video(video_id: str, creator_id: str, score: float = 0.8) -> dict[str, Any]:
         "tone": "analytical",
         "score": score,
     }
+
+
+class ThumbnailRefreshTest(unittest.TestCase):
+    def test_refreshes_only_thumbnail_and_reuses_cached_urls(self):
+        row = video("a", "creator") | {"thumbnail_url": "old.jpg", "hls_url": "original.m3u8"}
+        data = {"data": [{"_id": "a", "hls": {"thumbnail_urls": ["fresh.jpg"], "video_url": "new.m3u8"}}]}
+        with (
+            patch.object(videos.config, "TWELVELABS_API_KEY", "test"),
+            patch.object(videos.config, "TWELVELABS_INDEX_ID", "index"),
+            patch.object(videos, "_thumbnail_refresh_at", 0),
+            patch.object(videos, "_thumbnail_urls", {}),
+            patch.object(videos.httpx, "get", return_value=httpx.Response(
+                200, json=data, request=httpx.Request("GET", "https://example.com")
+            )) as get,
+        ):
+            for _ in range(2):
+                response = _build_video_response(row, {})
+                self.assertEqual(response.thumbnail_url, "fresh.jpg")
+                self.assertEqual(response.hls_url, "original.m3u8")
+            get.assert_called_once()
+            self.assertEqual(row["thumbnail_url"], "old.jpg")
 
 
 class RecommendationRulesTest(unittest.TestCase):

@@ -8,7 +8,9 @@ Also exports shared helpers used by other routers:
 
 import logging
 import time
+from threading import Lock
 
+import httpx
 from fastapi import APIRouter, HTTPException, Query
 import pixeltable as pxt
 
@@ -161,6 +163,44 @@ def _attach_attrs(rows: list[dict], videos_t) -> None:
         logger.debug("Could not load attributes: %s", e)
 
 
+_thumbnail_urls: dict[str, str] = {}
+_thumbnail_refresh_at = 0.0
+_thumbnail_lock = Lock()
+
+
+def _thumbnail_url(row: dict) -> str:
+    global _thumbnail_urls, _thumbnail_refresh_at
+    if config.TWELVELABS_API_KEY and config.TWELVELABS_INDEX_ID:
+        with _thumbnail_lock:
+            if time.monotonic() >= _thumbnail_refresh_at:
+                try:
+                    urls = {}
+                    page = 1
+                    while True:
+                        response = httpx.get(
+                            f"{config.TWELVELABS_BASE_URL}/indexes/{config.TWELVELABS_INDEX_ID}/videos",
+                            params={"page": page, "page_limit": 50},
+                            headers={"x-api-key": config.TWELVELABS_API_KEY},
+                            timeout=5,
+                        )
+                        response.raise_for_status()
+                        data = response.json()
+                        for video in data["data"]:
+                            thumbnails = (video.get("hls") or {}).get("thumbnail_urls") or []
+                            if thumbnails and thumbnails[0]:
+                                urls[video["_id"]] = thumbnails[0]
+                        if page >= data.get("page_info", {}).get("total_page", 1):
+                            break
+                        page += 1
+                except (httpx.HTTPError, ValueError, KeyError, TypeError):
+                    logger.warning("Unable to refresh TwelveLabs thumbnail URLs")
+                    _thumbnail_refresh_at = time.monotonic() + 30
+                else:
+                    _thumbnail_urls = urls
+                    _thumbnail_refresh_at = time.monotonic() + 300
+    return _thumbnail_urls.get(row["id"]) or row.get("thumbnail_url") or ""
+
+
 def _build_video_response(row: dict, creators_map: dict[str, dict]) -> VideoResponse:
     """Convert a Pixeltable row dict into a VideoResponse with nested creator."""
     cid = row.get("creator_id", "")
@@ -186,7 +226,7 @@ def _build_video_response(row: dict, creators_map: dict[str, dict]) -> VideoResp
         ),
         category=row.get("category", "interview"),
         duration=row.get("duration", 0),
-        thumbnail_url=row.get("thumbnail_url", ""),
+        thumbnail_url=_thumbnail_url(row),
         hls_url=row.get("hls_url"),
         upload_date=row.get("upload_date", ""),
         attributes=attributes,
