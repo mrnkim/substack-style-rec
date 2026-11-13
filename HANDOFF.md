@@ -21,7 +21,7 @@ Branch `marengo-model-upgrade`. This section is for the person or agent with acc
 
 - In the Render dashboard, open the service `substack-rec-api`, then Settings, and check which repository and branch it deploys from. This plan assumes `mrnkim/substack-style-rec`, branch `main`. If it is anything else, e.g., `pierrebrunelle/substack-style-rec`, STOP and report it, because merging this pull request would then not deploy.
 - The pull request is [mrnkim/substack-style-rec#19](https://github.com/mrnkim/substack-style-rec/pull/19), from `apreshill:marengo-model-upgrade` into `main`.
-- You need SSH access to the Render service `substack-rec-api`, and access to its dashboard for the disk snapshot and the restart.
+- You need SSH access to the Render service `substack-rec-api` and dashboard access to pause automatic deploys and restart the service.
 - Alison or Pierre must be available to approve each STOP in the steps below.
 - Then follow "Steps for the agent" in order, starting at step 1. Steps 1 and 2 happen before the merge.
 
@@ -31,7 +31,7 @@ Branch `marengo-model-upgrade`. This section is for the person or agent with acc
 - Pixeltable 0.7.24 adds `pxtf.twelvelabs.async_embed_asset` ([pixeltable/pixeltable#1907](https://github.com/pixeltable/pixeltable/pull/1907)). It runs a TwelveLabs async embedding task and returns one fused visual and audio vector for a whole clip of any length. The synchronous Marengo 3.5 call rejects audio and video over 30 seconds, and the scene clips average about 88 seconds.
 - `backend/app.py` is the schema for a new install. Scene clips use `async_embed_asset`, and text and image queries use `embed`, both with `model_name="marengo3.5"`.
 - `backend/app_existing_marengo35.py` is the schema for the live database. It is `app_existing.py` with the two named indexes, `title_marengo` and `scene_marengo`, switched to Marengo 3.5. Nothing else changes.
-- Step 6 applies that schema with the `pxt` CLI. `backend/upgrade_existing_marengo35.py` is a fallback that does the same rebuild from Python. By default it only prints the plan. With `--apply` it drops the two indexes and builds them again with Marengo 3.5. It keeps every row, the Analyze tags, the scene cuts, and the scene clips. It refuses any other schema change. It sets Pixeltable's row buffer to 64, the value that worked on Render in June.
+- Step 6 uses `backend/upgrade_existing_marengo35.py`. It defaults to showing the plan, refuses changes outside the two named indexes, and caps the row buffer at 64. It does not reload videos or recompute tags or cuts.
 - The upload search handler in `backend/routers/search.py` is now a plain `def` instead of `async def`. As `async def`, it blocked the server while a video upload search ran, which takes about 47 seconds on Marengo 3.5: `/api/videos` took 44 seconds instead of 0.02 seconds. After the fix it answered in 0.01 to 0.03 seconds during the same search.
 
 ### What was tested, and what was not
@@ -78,7 +78,7 @@ A third test used the "KPop Demon Hunters | Hot Ones Versus" video, where "The G
 
 1. Render rebuilds and restarts the backend service, because `autoDeploy` is on for `main`. This takes about 3 to 5 minutes. Vercel rebuilds the frontend.
 2. The backend starts with Pixeltable 0.7.24 and opens the live database on the persistent disk. Pixeltable may upgrade the format of the database metadata at this point. After that, the old code cannot open the database unless you restore a backup.
-3. The live indexes still use Marengo 3.0, so search and recommendations still return Marengo 3.0 results. The frontend text already says Marengo 3.5.
+3. The live indexes still use Marengo 3.0 until the rebuild. The frontend describes Marengo without claiming a live model version.
 4. The live site uses Marengo 3.5 only after someone runs the upgrade script on the server, in steps 4 to 8 below.
 
 ### Facts about the live server
@@ -126,23 +126,16 @@ STOP. Report the Pixeltable version, the index names, the counts, the full `migr
 
 #### Step 2. Back up the database, before the merge
 
-1. In the Render dashboard, open the service's disk and confirm that a snapshot from today exists. Write down its time.
-2. Make a database dump while the app is running.
+1. Pause Render automatic deploys and record the live commit and PostgreSQL version.
+2. Save a fresh PostgreSQL custom-format `pg_dump` and a consistent `pg_basebackup` with WAL. Keep both off the Render disk. Verify the physical backup with `pg_verifybackup`.
+3. Archive the matching media, cache and configuration files separately; exclude live `pgdata` from the file archive. Check archive contents and record checksums. Do not rely on a [Render disk snapshot for database recovery](https://render.com/docs/disks#restoring-a-custom-database).
+4. Restore the logical dump and matching media into an isolated home using the pre-upgrade app. Check 10 creators, 25 videos, 476 clips, media availability and existing index queries. Keep the backup itself unchanged.
 
-```bash
-cd /app
-PGBIN=$(uv run python -c "import os, pixeltable_pgserver; print(os.path.join(os.path.dirname(pixeltable_pgserver.__file__), 'pginstall', 'bin'))")
-"$PGBIN/pg_dump" -h /var/pixeltable/pgdata -U postgres -d pixeltable -Fc -f /var/pixeltable/pre-marengo35.dump
-ls -lh /var/pixeltable/pre-marengo35.dump
-```
-
-The dump holds the tables and the vectors. It does not hold the video clip files, so the disk snapshot is the full backup. Copy the dump off the Render disk if you can.
-
-STOP. Report the snapshot time and the dump size.
+STOP. Report the backup locations, checksums and restore verification. Do not merge until they are verified.
 
 #### Step 3. Merge the pull request and check the deploy
 
-After Alison or Pierre approves, merge the pull request into `main`. Wait for the Render deploy to finish. The Render log shows "Connected to Pixeltable schema" when the service is up.
+After Alison or Pierre approves, merge the pull request into `main`, then manually deploy that exact commit. Keep Render automatic deploys paused until validation succeeds. The Render log shows "Connected to Pixeltable schema" when the service is up.
 
 ```bash
 curl -s https://substack-rec-api-g2ui.onrender.com/health
@@ -192,6 +185,8 @@ STOP if it shows any other change, e.g., a column, or anything marked UNSUPPORTE
 
 Agree on a time with Alison or Pierre first. Search and recommendations cannot use the scene index while it is rebuilt. The rebuild makes about 476 TwelveLabs async embedding tasks, which covers about 11.6 hours of video.
 
+Before applying the plan, verify every stored clip URL resolves on the target host. The October backup includes 475 clips under `media/`; one scene points directly to `/app/video_files/AjwaE0WozfE.mp4`, outside the persistent disk. That source must be available after the final deploy. A successful database restore alone does not verify media availability.
+
 Memory comes first. The recommended way is to repeat what worked in June.
 
 1. With approval, scale the service to the 4 GB instance.
@@ -199,19 +194,19 @@ Memory comes first. The recommended way is to repeat what worked in June.
 
 Running on 2 GB without resizing has not been tested, and the same build ran out of memory there in June.
 
-Start the rebuild detached and follow its log. The command restarts the `pxt` daemon with a 30 minute TwelveLabs timeout per clip (the default is 10 minutes), then applies the schema.
+Start the guarded rebuild detached and follow its log. Use the 64-row cap from the start.
 
 ```bash
 cd /app
-setsid bash -c 'cd /app && export TWELVELABS_TIMEOUT=1800 && uv run pxt daemon restart && uv run pxt schema update app_existing_marengo35.py substack_rec --allow-destructive -f' > /var/pixeltable/upgrade-marengo35.log 2>&1 < /dev/null &
+setsid bash -c 'cd /app && export TWELVELABS_TIMEOUT=1800 && uv run upgrade_existing_marengo35.py --home /var/pixeltable --max-buffered-rows 64 --apply' > /var/pixeltable/upgrade-marengo35.log 2>&1 < /dev/null &
 tail -f /var/pixeltable/upgrade-marengo35.log
 ```
 
-The log ends with `updated substack_rec/videos` and `updated substack_rec/video_scenes` when it is done. In a second SSH session, watch memory with `free -m` every minute or so.
+The log reports the index rebuild and clip counts. In a second SSH session, watch container memory with `/sys/fs/cgroup/memory.current`, `memory.peak`, and `memory.events`.
 
-- A clip that fails to embed does not stop the build. Pixeltable records the error on that clip and leaves its vector empty. The live app already runs with clips that have no vector (111 today), so this does not need a retry.
+- A clip that fails to embed can leave its vector empty despite a successful schema update. Do not treat this as a complete rebuild. Check coverage for all 476 clips and investigate missing vectors before cutover approval.
 - If the job stops before it finishes, first clear any stale locks (gotcha 4 under History). Then run `uv run pxt schema diff app_existing_marengo35.py substack_rec` again. It shows only the index that still needs building. Run the same `setsid` command again.
-- If the service runs out of memory and restarts, STOP and report. The fallback is `uv run upgrade_existing_marengo35.py --home /var/pixeltable --apply`, which does the same rebuild in one Python process with Pixeltable's row buffer capped at 64, the June setting. The CLI uses Pixeltable's default buffer.
+- If the service runs out of memory and restarts, STOP and report. Do not retry with the uncapped CLI.
 
 #### Step 7. Restart the web service
 
@@ -240,7 +235,7 @@ STOP. Report the index lines, the clip counts (and how many have no vector, agai
 
 ### How to roll back
 
-Restore the disk snapshot from step 2, then revert the merge commit on `main`. Do both. After step 3, the database metadata may be in the Pixeltable 0.7.24 format, and the old code cannot open it.
+Keep automatic deploys paused. Stop writers and preserve the failed upgraded database and media. Restore the verified pre-upgrade PostgreSQL backup and matching media/config into a separate home. Run the recorded pre-upgrade app commit against the restored home, verify catalog, search and recommendations, then switch service traffic back. Do not start the old app against upgraded metadata. Do not overwrite the current home or restore a Render disk snapshot as a database rollback.
 
 ### Background
 

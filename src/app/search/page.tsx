@@ -290,7 +290,7 @@ function SearchResults() {
               <div className="w-6 h-6 border-2 border-[var(--accent)] border-t-transparent rounded-full animate-spin" />
               {isSearching && uploadedFile && (
                 <p className="text-sm text-[var(--text-secondary)]">
-                  Analyzing {getFileModality(uploadedFile)} with Marengo 3.5...
+                  Analyzing {getFileModality(uploadedFile)} with Marengo...
                 </p>
               )}
             </div>
@@ -343,7 +343,7 @@ function SearchResults() {
               </h3>
               <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
                 Upload an image, short video clip, or audio file to find videos with matching content.
-                Powered by TwelveLabs Marengo 3.5 and Pixeltable. Marengo puts text, images, video, and audio in one embedding space, so any of them can be a query. Pixeltable stores the scene embeddings and runs the similarity queries.
+                Powered by TwelveLabs Marengo and Pixeltable. Marengo puts text, images, video, and audio in one embedding space, so any of them can be a query. Pixeltable stores the scene embeddings and runs the similarity queries.
               </p>
             </div>
 
