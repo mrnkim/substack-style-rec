@@ -15,7 +15,7 @@ import urllib.request
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 VIDEOS_CSV = os.path.join(SCRIPT_DIR, "videos_metadata.csv")
 
-API_KEY = os.environ.get("TWELVELABS_API_KEY", "tlk_1EE5XJH3RGEG61293581G2FKC5MS")
+API_KEY = os.environ.get("TWELVELABS_API_KEY", "").strip()
 INDEX_ID = os.environ.get("TWELVELABS_INDEX_ID", "69c37b6708cd679f8afbd748")
 BASE_URL = "https://api.twelvelabs.io/v1.3"
 
@@ -68,6 +68,9 @@ def load_csv_metadata() -> dict[str, dict]:
 
 
 def main():
+    if not API_KEY:
+        raise SystemExit("Set TWELVELABS_API_KEY before running this script.")
+
     # Load CSV metadata indexed by normalized title
     csv_data = load_csv_metadata()
     print(f"Loaded {len(csv_data)} videos from CSV\n")
